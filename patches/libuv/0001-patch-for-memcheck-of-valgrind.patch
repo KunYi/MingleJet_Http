@@ -1,0 +1,53 @@
+From 0b5009e2e723c15240b0d70ad74fb058b8b28141 Mon Sep 17 00:00:00 2001
+From: KunYi Chen <kunyi.chen@gmail.com>
+Date: Fri, 16 Feb 2024 22:15:42 +0800
+Subject: [PATCH] patch for memcheck of valgrind
+
+---
+ include/uv/version.h |  2 +-
+ src/unix/internal.h  | 11 +++++------
+ 2 files changed, 6 insertions(+), 7 deletions(-)
+
+diff --git a/include/uv/version.h b/include/uv/version.h
+index d6a61a1..8576ef8 100644
+--- a/include/uv/version.h
++++ b/include/uv/version.h
+@@ -32,7 +32,7 @@
+ 
+ #define UV_VERSION_MAJOR 1
+ #define UV_VERSION_MINOR 48
+-#define UV_VERSION_PATCH 0
++#define UV_VERSION_PATCH 1
+ #define UV_VERSION_IS_RELEASE 1
+ #define UV_VERSION_SUFFIX ""
+ 
+diff --git a/src/unix/internal.h b/src/unix/internal.h
+index bcb3be5..53980a8 100644
+--- a/src/unix/internal.h
++++ b/src/unix/internal.h
+@@ -36,17 +36,16 @@
+ #include <sys/stat.h>
+ #include <sys/types.h>
+ 
+-#define uv__msan_unpoison(p, n)                                               \
+-  do {                                                                        \
+-    (void) (p);                                                               \
+-    (void) (n);                                                               \
+-  } while (0)
++#include <valgrind/memcheck.h>
++#define uv__valgrind_unpoison(p, n) VALGRIND_MAKE_MEM_DEFINED(p, n)
++
++#define uv__msan_unpoison uv__valgrind_unpoison
+ 
+ #if defined(__has_feature)
+ # if __has_feature(memory_sanitizer)
+ #  include <sanitizer/msan_interface.h>
+ #  undef uv__msan_unpoison
+-#  define uv__msan_unpoison __msan_unpoison
++#  define uv__msan_unpoison(p, n) uv__valgrind_unpoison(p, n); __msan_unpoison(p, n)
+ # endif
+ #endif
+ 
+-- 
+2.43.2
+
