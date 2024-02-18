@@ -12,16 +12,11 @@ elseif(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wextra -pedantic-errors")
     # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb3")
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS} -o2")
-    # 添加 -g 選項支持 GDB 調試
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS} -ggdb3")
 endif()
 
-
-
 FIND_PACKAGE(libuv REQUIRED)
 FIND_PACKAGE(llhttp REQUIRED)
-FIND_PACKAGE(jansson REQUIRED)
-FIND_PACKAGE(libjwt REQUIRED)
 
 PROJECT(MingleJet VERSION 0.0.1)
 

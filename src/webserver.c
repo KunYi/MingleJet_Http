@@ -11,51 +11,33 @@
 #include <utlist.h>
 #include <uv.h>
 
-#define DEFAULT_PORT 8080
+static const char *res404content = "<!DOCTYPE html>"
+                                  "<html>"
+                                  "<header>"
+                                  "<title>MingleJet</title>"
+                                  "</header>"
+                                  "<body>"
+                                  "<H1>Not Found</H1>"
+                                  "</body>"
+                                  "</html>";
 
-static const char *response200 = "HTTP/1.1 200 OK\r\n"
-                                 "Content-Type: %s\r\n"
-                                 "Content-Length: %d\r\n"
-                                 "\r\n";
+static const char* res500content = "<!DOCTYPE html>"
+                                  "<html>"
+                                  "<header>"
+                                  "<title>MingleJet</title>"
+                                  "</header>"
+                                  "<body>"
+                                  "<h1>500 Internal Server Error</h1>"
+                                  "<p>An unexpected error occurred while processing your request.</p>"
+                                  "<p>Please try again later.</p>"
+                                  "</body>"
+                                  "</html>";
 
-static const char *response404 = "HTTP/1.1 404 Not Found\r\n"
-                                 "Content-Type: text/html\r\n"
-                                 "Content-Length: 85\r\n"
-                                 "\r\n"
-                                 "<html>"
-                                 "<header>"
-                                 "<title>MingleJet</title>"
-                                 "</header>"
-                                 "<body>"
-                                 "<H1>Not Found</H1>"
-                                 "</body>"
-                                 "</html>";
 
 static const char *response401 = "HTTP/1.1 401 Unauthorized\r\n"
                                  "Location: %s\r\n"
                                  "Content-Length: 0\r\n"
                                  "\r\n";
-
-// static mime_type_pair_t mime_types[] = {
-//   { ".html", "text/html" },
-//   { ".htm", "text/html" },
-//   { ".css", "text/css" },
-//   { ".js",  "text/javascript" },
-//   { ".mjs", "text/javascript" },
-//   { ".json", "application/json" },
-//   { ".txt", "text/plain" },
-//   { ".png", "image/png" },
-//   { "svg", "image/svg+xml" },
-//   { ".jpg", "image/jpeg" },
-//   { ".jpeg", "image/jpeg" },
-//   { ".gif", "image/gif" },
-//   { ".ico", "image/vnd.microsoft.icon"},
-//   { ".ttf", "font/ttf" },
-//   { ".woff", "font/woff" },
-//   { ".woff2", "font/woff2" },
-//   { ".pdf", "application/pdf" },
-//   { "", "application/octet-stream" },
-// };
 
 static mime_type_pair_t mime_types[] = {
     {".html", "text/html"},
@@ -70,7 +52,7 @@ static mime_type_pair_t mime_types[] = {
     {".jpg", "image/jpeg"},
     {".jpeg", "image/jpeg"},
     {".gif", "image/gif"},
-    {".ico", "image/vnd.microsoft.icon"},
+    {".ico", "image/x-icon"},
     {".ttf", "font/ttf"},
     {".woff", "font/woff"},
     {".woff2", "font/woff2"},
@@ -97,32 +79,127 @@ static mime_type_pair_t mime_types[] = {
     {".XXXYYY", "application/octet-stream"},
 };
 
+/* http status codes */
+static const http_status_code_t status1xx_codes[] = {
+    // Informational responses
+    {100, "Continue"},
+    {101, "Switching Protocols"},
+    {102, "Processing"},
+    {103, "Early Hints"},
+};
+static const int num_status1xx_codes =
+    sizeof(status1xx_codes) / sizeof(http_status_code_t);
+
+static const http_status_code_t status2xx_codes[] = {
+    // Successful responses
+    {200, "OK"},
+    {201, "Created"},
+    {202, "Accepted"},
+    {203, "Non-Authoritative Information"},
+    {204, "No Content"},
+    {205, "Reset Content"},
+    {206, "Partial Content"},
+    {207, "Multi-Status (WebDAV)"},
+    {208, "Already Reported (WebDAV)"},
+    {226, "IM Used"},
+};
+static const int num_status2xx_codes =
+    sizeof(status2xx_codes) / sizeof(http_status_code_t);
+
+static const http_status_code_t status3xx_codes[] = {
+    // Redirection messages
+    {300, "Multiple Choices"},
+    {301, "Moved Permanently"},
+    {302, "Found"},
+    {303, "See Other"},
+    {304, "Not Modified"},
+    {305, "Use Proxy"},
+    {306, "(Unused)"},
+    {307, "Temporary Redirect"},
+    {308, "Permanent Redirect"},
+};
+static const int num_status3xx_codes =
+    sizeof(status3xx_codes) / sizeof(http_status_code_t);
+
+static const http_status_code_t status4xx_codes[] = {
+    // Client error responses
+    {400, "Bad Request"},
+    {401, "Unauthorized"},
+    {402, "Payment Required"},
+    {403, "Forbidden"},
+    {404, "Not Found"},
+    {405, "Method Not Allowed"},
+    {406, "Not Acceptable"},
+    {407, "Proxy Authentication Required"},
+    {408, "Request Timeout"},
+    {409, "Conflict"},
+    {410, "Gone"},
+    {411, "Length Required"},
+    {412, "Precondition Failed"},
+    {413, "Payload Too Large"},
+    {414, "URI Too Long"},
+    {415, "Unsupported Media Type"},
+    {416, "Range Not Satisfiable"},
+    {417, "Expectation Failed"},
+    {418, "I'm a teapot"},
+    {419, "Authentication Timeout"},
+    {421, "Misdirected Request"},
+    {422, "Unprocessable Entity"},
+    {423, "Locked"},
+    {424, "Failed Dependency"},
+    {425, "Unordered Collection"},
+    {426, "Upgrade Required"},
+    {428, "Precondition Required"},
+    {429, "Too Many Requests"},
+    {431, "Request Header Fields Too Large"},
+    {440, "Login Timeout"},
+    {444, "No Response"},
+    {450, "Blocked by Windows Parental Controls"},
+    {451, "Unavailable For Legal Reasons"},
+    {452, "Request Header Fields Too Large"},
+    {494, "Request Header Timeout"},
+    {495, "Cert Error"},
+    {496, "Client Closed Request"},
+    {497, "HTTP Request Sent To HTTPS Port"},
+    {499, "Client Closed Request"},
+};
+static const int num_status4xx_codes =
+    sizeof(status4xx_codes) / sizeof(http_status_code_t);
+
+static const http_status_code_t status5xx_codes[] = {
+    // Server error responses
+    {500, "Internal Server Error"},
+    {501, "Not Implemented"},
+    {502, "Bad Gateway"},
+    {503, "Service Unavailable"},
+    {504, "Gateway Timeout"},
+    {505, "HTTP Version Not Supported"},
+    {506, "Variant Also Negotiates"},
+    {507, "Insufficient Storag"},
+    {508, "Loop Detected"},
+    {510, "Not Extended"},
+    {511, "Network Authentication Required"}};
+static const int num_status5xx_codes =
+    sizeof(status5xx_codes) / sizeof(http_status_code_t);
+
 static webconfig_t *web_config;
 static uv_loop_t *loop;
 static uv_signal_t sigint_handle, sigterm_handle;
-static uv_idle_t *idle_handle = NULL;
-
+static uv_timer_t release_timer;
 // HTTP parser settings
-llhttp_settings_t settings;
-
-// HTTP request structure
+static llhttp_settings_t settings;
 
 static void on_write(uv_write_t *req, int status);
 
-// Buffer to store received data
-char buffer[4096];
+static client_t *activeClientList = NULL;
 
-client_t *activeClientList = NULL;
-client_t *freeClientList = NULL;
-
-// 清理待释放队列的回调函数
-static void cleanup_freeList(uv_idle_t *handle) {
+static void cleanup_freeList(uv_timer_t *handle) {
   UNUSED(handle);
-  // 执行清理操作
+  // clean
   client_t *elt, *tmp;
-  LL_FOREACH_SAFE(freeClientList, elt, tmp) {
-    if (elt->refCounter == 0) {
-      LL_DELETE(freeClientList, elt);
+  LL_FOREACH_SAFE(activeClientList, elt, tmp) {
+    if (CLIENT_IS_FLAGS_FREE(elt)) {
+      LL_DELETE(activeClientList, elt);
       if (elt->request.url != NULL)
         free(elt->request.url);
       free(elt);
@@ -132,14 +209,6 @@ static void cleanup_freeList(uv_idle_t *handle) {
 
 static void cleanup_resources(void) {
   client_t *elt, *tmp;
-  LL_FOREACH_SAFE(freeClientList, elt, tmp) {
-    LL_DELETE(freeClientList, elt);
-    if (elt->request.url != (char *)NULL) {
-      free(elt->request.url);
-    }
-    free(elt);
-  }
-
   LL_FOREACH_SAFE(activeClientList, elt, tmp) {
     LL_DELETE(activeClientList, elt);
     if (elt->request.url != (char *)NULL) {
@@ -149,14 +218,10 @@ static void cleanup_resources(void) {
   }
 }
 
-// 在事件循环中设置空闲处理器，空闲时执行清理操作
-void setup_cleanup_idle(uv_loop_t *loop) {
-  // 创建一个 uv_idle_t 结构体
-  idle_handle = (uv_idle_t *)malloc(sizeof(uv_idle_t));
-
-  // 初始化空闲处理器，并设置回调函数
-  uv_idle_init(loop, idle_handle);
-  uv_idle_start(idle_handle, cleanup_freeList);
+static void setup_cleanup_timer(uv_loop_t *loop) {
+  // Release resource1 after 200ms
+  uv_timer_init(loop, &release_timer);
+  uv_timer_start(&release_timer, (uv_timer_cb)&cleanup_freeList, 200, 200);
 }
 
 /* -------------------------------------------------------------------------------------------
@@ -180,14 +245,90 @@ static const char *match_mime_type(const char *path) {
   return content_type;
 }
 
-static void final_sendfile(uv_fs_t *req) {
-  client_t *client = (client_t *)req->data;
+static const char *status_string(llhttp_status_t status) {
+  const http_status_code_t *p = NULL;
+  int max_statuscode = 0;
 
-  uv_fs_t req_close;
-  uv_fs_close(loop, &req_close, client->req_open.result, NULL);
-  uv_fs_req_cleanup(req);
-  free(req);
-  client->refCounter--;
+  if ((status >= 100) && (status < 200)) {
+    p = &status1xx_codes[0];
+    max_statuscode = num_status1xx_codes;
+  } else if ((status >= 200) && (status < 300)) {
+    p = &status2xx_codes[0];
+    max_statuscode = num_status2xx_codes;
+  } else if ((status >= 300) && (status < 400)) {
+    p = &status3xx_codes[0];
+    max_statuscode = num_status3xx_codes;
+  } else if ((status >= 400) && (status < 500)) {
+    p = &status4xx_codes[0];
+    max_statuscode = num_status4xx_codes;
+  } else if ((status >= 500) && (status < 600)) {
+    p = &status5xx_codes[0];
+    max_statuscode = num_status5xx_codes;
+  } else {
+    return "Unknow Status";
+  }
+
+  for (int i = 0; i < max_statuscode; i++) {
+    if (status == p[i].code)
+      return p[i].reason_phrase;
+  }
+  return "Unknow Status";
+}
+
+static const int make_header_status(llhttp_status_t status, char *buf, uint32_t len) {
+  return snprintf(buf, len, "HTTP/1.1 %d %s\r\n", status, status_string(status));
+}
+
+static const int make_header_content_type(const char *content_type, char *buf, uint32_t len) {
+  return snprintf(buf, len, "Content-Type: %s\r\n", content_type);
+}
+
+static const int make_header_content_length(size_t content_length, char *buf, uint32_t len) {
+  return snprintf(buf, len, "Content-Length: %ld\r\n", content_length);
+}
+
+static uv_buf_t make_response_header(llhttp_status_t status, request_t *req) {
+  if (req == NULL) {
+    return uv_buf_init(NULL, 0);
+  }
+
+  char buf[2048];
+  char *ret = buf;
+  int len = sizeof(buf);
+  int cnt = 0;
+
+  if (ret != NULL) {
+    cnt = make_header_status(status, ret, len);
+    len -= cnt;
+    if (req->mime_content != NULL) {
+      cnt += make_header_content_type(req->mime_content, ret + cnt, len);
+      len -= cnt;
+    }
+    // always include 'Content-Length' field, even the value is zero
+    cnt += make_header_content_length(req->length_content, ret + cnt, len);
+    len -= cnt;
+    cnt += snprintf(ret + cnt, len, "\r\n");
+  }
+
+  req->response = uv_buf_init(malloc(cnt), cnt);
+  memcpy(req->response.base, buf, req->response.len);
+  return req->response;
+}
+
+static void on_close_sendfile(uv_fs_t *fs_req) {
+  uv_fs_req_cleanup(fs_req);
+  free(fs_req);
+}
+
+static void final_sendfile(uv_fs_t *fs_req) {
+  client_t *client = (client_t *)fs_req->data;
+  const request_t *req = &client->request;
+
+  uv_fs_t *req_close = (uv_fs_t *)malloc(sizeof(uv_fs_t));
+  uv_fs_close(loop, req_close, req->open, on_close_sendfile);
+  uv_fs_req_cleanup(fs_req);
+  free(fs_req);
+  CLIENT_CLEAR_IN_REF(client);
 }
 
 static void send_file_context(uv_fs_t *fs_req) {
@@ -200,7 +341,8 @@ static void send_file_context(uv_fs_t *fs_req) {
     uv_fs_t *send_req = (uv_fs_t *)malloc(sizeof(uv_fs_t));
     send_req->data = client;
     uv_fileno((uv_handle_t *)&client->handle, &sendfd);
-    client->refCounter++;
+    CLIENT_SET_IN_REF(client);
+    req->open = fs_req->result;
     uv_fs_sendfile(loop, send_req, sendfd, fs_req->result, 0,
                    req->length_content, final_sendfile);
 #ifdef _WIN32
@@ -217,22 +359,21 @@ static void send_file_context(uv_fs_t *fs_req) {
 }
 
 static void open_send_file(uv_write_t *req, int status) {
+  request_t *request = (request_t *)req->data;
   if (status == 0) {
-    request_t *request = (request_t *)req->data;
     uv_fs_t *fs_req = malloc(sizeof(uv_fs_t));
     fs_req->data = request;
     uv_fs_open(loop, fs_req, request->path_content, O_RDONLY,
                (S_IRUSR | S_IRGRP), send_file_context);
   }
   free(req);
+  if (request->response.base != NULL)
+    free(request->response.base);
 }
 
 static void found_and_sendfs_req(request_t *req) {
   client_t *client = req->client;
-  char buf[128];
-  snprintf(buf, sizeof(buf), response200, match_mime_type, req->length_content);
-  uv_buf_t resbuf = uv_buf_init((char *)buf, strlen(buf));
-
+  uv_buf_t resbuf = make_response_header(200, req);
   // send header of response;
   uv_write_t *write_req = malloc(sizeof(uv_write_t));
   write_req->data = (void *)req;
@@ -248,13 +389,15 @@ static void check_default_files_async(uv_fs_t *fs_req) {
     // fprintf(stdout, "Can't find file: %s\n", fs_req->path);
     req->try_default++;
     if (req->try_default >= web_config->def_cnt) {
-      // fprintf(stdout, "Can't find any default file\n");
-      // FIXME: response 404
-      uv_buf_t resbuf = uv_buf_init((char *)response404, strlen(response404));
+      uv_buf_t resbuf[2];
+      req->mime_content = match_mime_type(".html");
+      req->length_content = strlen(res404content);
+      resbuf[0] = make_response_header(404, req);
+      resbuf[1] = uv_buf_init((char *)res404content, strlen(res404content));
       // send reponse;
       uv_write_t *write_req = malloc(sizeof(uv_write_t));
       write_req->data = (void *)client;
-      uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf, 1, on_write);
+      uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2, on_write);
       uv_fs_req_cleanup(fs_req);
       free(fs_req);
       return;
@@ -266,26 +409,18 @@ static void check_default_files_async(uv_fs_t *fs_req) {
                  req->url, web_config->defaults[req->try_default]);
 
     if (req->length_path >= MAX_PATH_LENGTH) {
-      // FIXME: response 500
       client_t *client = req->client;
-      uv_buf_t resbuf[5];
-      resbuf[0] = uv_buf_init("HTTP/1.1 500 Internal Server Error\r\n", 36);
-      resbuf[1] = uv_buf_init("Content-Type: text/html\r\n", 25);
-      resbuf[2] = uv_buf_init("Content-Length: 197\r\n", 21);
-      resbuf[3] = uv_buf_init("\r\n", 2);
-      resbuf[4] = uv_buf_init(
-          "<html><header><title>MingleJet</title></header>"
-          "<body>"
-          "<h1>500 Internal Server Error</h1>"
-          "<p>An unexpected error occurred while processing your request.</p>"
-          "<p>Please try again later.</p>"
-          "</body>"
-          "</html>",
-          197);
+
+      uv_buf_t resbuf[2];
+      req->mime_content = match_mime_type(".html");
+      req->length_content = strlen(res500content);
+      resbuf[0] = make_response_header(500, req);
+      resbuf[1] = uv_buf_init((char *)res500content, strlen(res500content));
+
       // send response
       uv_write_t *write_req = malloc(sizeof(uv_write_t));
       write_req->data = (void *)client;
-      uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 5,
+      uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2,
                on_write);
       uv_fs_req_cleanup(fs_req);
       free(fs_req);
@@ -306,6 +441,7 @@ static void check_default_files_async(uv_fs_t *fs_req) {
   // find file will send the file to user
   req->length_content = fs_req->statbuf.st_size;
   req->path_content = strdup(fs_req->path);
+  req->mime_content = match_mime_type(fs_req->path);
   found_and_sendfs_req(req);
 
   uv_fs_req_cleanup(fs_req);
@@ -319,12 +455,16 @@ static void check_path_async(uv_fs_t *fs_req) {
   if (fs_req->result < 0) {
     fprintf(stdout, "check fs_stat failed\n");
 
-    uv_buf_t resbuf = uv_buf_init((char *)response404, strlen(response404));
+    uv_buf_t resbuf[2];
+    req->mime_content = match_mime_type(".html");
+    req->length_content = strlen(res404content);
+    resbuf[0] = make_response_header(404, req);
+    resbuf[1] = uv_buf_init((char *)res404content, strlen(res404content));
 
     // send reponse;
     uv_write_t *write_req = malloc(sizeof(uv_write_t));
     write_req->data = (void *)client;
-    uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf, 1, on_write);
+    uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2, on_write);
     uv_fs_req_cleanup(fs_req);
     free(fs_req);
     return;
@@ -350,6 +490,7 @@ static void check_path_async(uv_fs_t *fs_req) {
     // found a file
     req->length_content = fs_req->statbuf.st_size;
     req->path_content = strdup(fs_req->path);
+    req->mime_content = match_mime_type(fs_req->path);
     found_and_sendfs_req(req);
   }
 
@@ -367,20 +508,17 @@ static void process_request(llhttp_t *parser, request_t *req) {
       snprintf(path, MAX_PATH_LENGTH, "%s%s", web_config->www_root, req->url);
   if (req->length_path >= MAX_PATH_LENGTH) {
     client_t *client = req->client;
-    uv_buf_t resbuf[5];
-    resbuf[0] = uv_buf_init("HTTP/1.1 500 Internal Server Error\r\n", 36);
-    resbuf[1] = uv_buf_init("Content-Type: text/html\r\n", 25);
-    resbuf[2] = uv_buf_init("Content-Length: 130\r\n", 21);
-    resbuf[3] = uv_buf_init("\r\n", 2);
-    resbuf[4] = uv_buf_init(
-        "<h1>500 Internal Server Error</h1>"
-        "<p>An unexpected error occurred while processing your request.</p>"
-        "<p>Please try again later.</p>",
-        130);
+
+    uv_buf_t resbuf[2];
+    req->mime_content = match_mime_type(".html");
+    req->length_content = strlen(res500content);
+    resbuf[0] = make_response_header(500, req);
+    resbuf[1] = uv_buf_init((char *)res500content, strlen(res500content));
+
     // send response
     uv_write_t *write_req = malloc(sizeof(uv_write_t));
     write_req->data = (void *)client;
-    uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 5,
+    uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2,
              on_write);
     return;
   }
@@ -447,56 +585,6 @@ static int on_body(llhttp_t *parser, const char *at, size_t length) {
   return 0;
 }
 
-/* -------------------------------------------------------------------------------------------
- */
-// static void on_stat(uv_fs_t *req) {
-//   client_t *client = req->data;
-//   client->filesize = 0;
-//   if (req->result < 0) {
-//     // Error
-//     fprintf(stderr, "stat error: %s\n", uv_strerror(req->result));
-//   } else {
-//     // Send file
-//     client->filesize = uv_fs_get_statbuf(req)->st_size;
-//   }
-//   uv_fs_req_cleanup(req);
-// }
-
-// static void on_open(uv_fs_t *req) {
-//   // client_t *client = req->data;
-//   if (req->result < 0) {
-//     // Error
-//     fprintf(stderr, "stat error: %s\n", uv_strerror(req->result));
-//   } else {
-//     ;
-//   }
-//   uv_fs_req_cleanup(req);
-// }
-
-int open_file(client_t *client, const char *file_path) {
-  // non callback function will blocking
-  const int ret = uv_fs_open(loop, &client->req_open, file_path, O_RDONLY,
-                             (S_IRUSR | S_IRGRP), NULL);
-  uv_fs_req_cleanup(&client->req_open);
-  return ret;
-}
-
-int stat_file(client_t *client, const char *file_path) {
-  // non callback function will blocking
-  const int ret = uv_fs_stat(loop, &client->req_stat, file_path, NULL);
-  client->filesize = 0;
-  if (ret < 0)
-    return 0;
-
-  client->filesize = uv_fs_get_statbuf(&client->req_stat)->st_size;
-  uv_fs_req_cleanup(&client->req_stat);
-  return ret;
-}
-
-int close_file(client_t *client) {
-  return uv_fs_close(loop, &client->req_close, client->req_open.result, NULL);
-}
-
 static void on_alloc(uv_handle_t *handle, size_t suggested_size,
                      uv_buf_t *buf) {
   UNUSED(handle);
@@ -505,36 +593,16 @@ static void on_alloc(uv_handle_t *handle, size_t suggested_size,
 
 static void on_close(uv_handle_t *handle) {
   client_t *client = (client_t *)(handle->data);
-  // move client from activeCLientList to freeClientList
-  LL_DELETE(activeClientList, client);
-  LL_APPEND(freeClientList, client);
-}
-
-static void on_sendfile(uv_fs_t *req) {
-  client_t *client = (client_t *)req->data;
-
-  uv_fs_t req_close;
-  uv_fs_close(loop, &req_close, client->req_open.result, NULL);
-  uv_fs_req_cleanup(req);
-  free(req);
-  client->refCounter--;
-}
-
-static void on_write(uv_write_t *req, int status) {
-  client_t *client = (client_t *)req->data;
-
-  if (status == 0 && client->sendfile) {
-    uv_os_fd_t sendfd;
-    client->req_sendfile = (uv_fs_t *)malloc(sizeof(uv_fs_t));
-    client->req_sendfile->data = (void *)client;
-    uv_fileno((uv_handle_t *)&client->handle, &sendfd);
-    client->sendfile = false;
-    client->refCounter++;
-    uv_fs_sendfile(loop, client->req_sendfile, sendfd, client->req_open.result,
-                   0, client->filesize, on_sendfile);
+  CLIENT_CLEAR_IN_USE(client);
+  if (CLIENT_IS_FLAGS_FREE(client)) {
+    LL_DELETE(activeClientList, client);
+    if (client->request.url != NULL)
+      free(client->request.url);
+    free(client);
   }
-  free(req);
 }
+
+static void on_write(uv_write_t *req, int status) { free(req); }
 
 // Callback to handle HTTP request data
 void on_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
@@ -576,6 +644,7 @@ void on_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 static client_t *createClient(void) {
   client_t *client = (client_t *)calloc(1, sizeof(client_t));
   if (client != NULL) {
+    CLIENT_SET_IN_USE(client);
     LL_APPEND(activeClientList, client);
     return client;
   }
@@ -619,28 +688,26 @@ static void walk_cb(uv_handle_t *handle, void *arg) {
   }
 }
 
-void signal_handler(uv_signal_t *handle, int signum) {
+static void signal_handler(uv_signal_t *handle, int signum) {
   UNUSED(signum);
   uv_stop(loop);
 }
 
-/**
- * @brief Starts the web server.
- *
- * This function initializes the libuv event loop, sets up HTTP parser settings,
- * initializes a TCP server, binds it to the specified address and port,
- * listens for incoming connections, and starts the event loop to handle client
- * requests.
- *
- * @param config Pointer to the web server configuration structure.
- *               If NULL, default configuration will be used.
- *
- * @return Returns 0 upon successful execution, or a non-zero value if an error
- *         occurs.
- */
-int webserver(webconfig_t *config) {
-  // Initialize libuv event loop
-  loop = uv_default_loop();
+static void showLibrariesInfo(void) {
+  fprintf(stdout, "use the below third party components\n");
+  // Print third-party component versions
+  fprintf(stdout, "  libuv:%d.%d.%d %s\n", UV_VERSION_MAJOR, UV_VERSION_MINOR,
+          UV_VERSION_PATCH, UV_VERSION_IS_RELEASE ? "Release" : "Testing");
+  fprintf(stdout, "  llhttp:%d.%d.%d\n", LLHTTP_VERSION_MAJOR,
+          LLHTTP_VERSION_MINOR, LLHTTP_VERSION_PATCH);
+  fprintf(stdout, "  utlist:%s\n", STR_VERSION(UTLIST_VERSION));
+}
+
+int webserver(uv_loop_t *ev_loop, webconfig_t *config) {
+  if (ev_loop == NULL)
+    return -1;
+
+  loop = ev_loop;
 
   // Set configuration if provided
   if (config != NULL) {
@@ -675,7 +742,7 @@ int webserver(webconfig_t *config) {
 
   // Bind server to specified address and port
   struct sockaddr_in bind_addr;
-  uv_ip4_addr("0.0.0.0", DEFAULT_PORT, &bind_addr);
+  uv_ip4_addr(web_config->host, web_config->port, &bind_addr);
   uv_tcp_bind(&server, (const struct sockaddr *)&bind_addr, 0);
 
   // Start listening for incoming connections
@@ -687,42 +754,31 @@ int webserver(webconfig_t *config) {
 
   // Print server information
   fprintf(stdout, "Launch MingleJet...\n\n");
-  fprintf(stdout, "use the below third party components\n");
-  fprintf(stdout, "  libuv:%d.%d.%d %s\n", UV_VERSION_MAJOR, UV_VERSION_MINOR,
-          UV_VERSION_PATCH, UV_VERSION_IS_RELEASE ? "Release" : "Testing");
-  fprintf(stdout, "  llhttp:%d.%d.%d\n", LLHTTP_VERSION_MAJOR,
-          LLHTTP_VERSION_MINOR, LLHTTP_VERSION_PATCH);
-
-// Print third-party component versions
-#define STR_HELPER(x) #x
-#define STR_VERSION(x) STR_HELPER(x)
-  fprintf(stdout, "  utlist:%s\n\n", STR_VERSION(UTLIST_VERSION));
-#undef STR_HELPER
-#undef STR_VERSION
-
+  showLibrariesInfo();
+  fprintf(stdout, "\n");
   // Print server listening information
-  fprintf(stdout, "Server listening on port %d...\n", DEFAULT_PORT);
+  fprintf(stdout, "Server listening on port %d...\n\n", web_config->port);
 
-  // Setup idle handle for cleanup
-  setup_cleanup_idle(loop);
+  // Setup timer for cleanup
+  setup_cleanup_timer(loop);
 
   // Run libuv event loop
   int ret = uv_run(loop, UV_RUN_DEFAULT);
 
-  // Stop idle handle
-  uv_idle_stop(idle_handle);
+  uv_timer_stop(&release_timer);
+  uv_close((uv_handle_t *)&release_timer, NULL);
 
   // Release resources
   uv_walk(loop, walk_cb, 0);
   uv_run(loop, UV_RUN_DEFAULT); // Run pending callbacks
-  cleanup_resources();
-  free(idle_handle);
 
   // Clean up resources and close event loop
+  cleanup_resources();
+
   // the following will release in uv_walk()
   // uv_signal_stop(&sigint_handle);
   // uv_signal_stop(&sigterm_handle);
-  uv_loop_close(loop);
+
   fprintf(stdout, "Server Shutdown now\n");
   return ret;
 }

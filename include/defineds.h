@@ -20,4 +20,7 @@
 #define MAX_PATH_LENGTH PATH_MAX
 #endif
 
+#define STR_HELPER(x) #x
+#define STR_VERSION(x) STR_HELPER(x)
+
 #endif
