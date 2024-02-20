@@ -568,8 +568,20 @@ int on_url(llhttp_t *parser, const char *at, size_t length) {
     free(client->request.url);
 
   char *path = strndup(at, length);
-  char *url = validate_and_normalize_path(path);
-  free(path);
+  const char *question = strchr(path, '?');
+  char *url = NULL;
+  if (question != NULL) {
+    const int len = question - path;
+    char *t_url = (char *)malloc(len + 1);
+    strncpy(t_url, path, len);
+    t_url[len] = '\0';
+    url = validate_and_normalize_path(t_url);
+    // TODO: parse parameters
+    free(path);
+  } else {
+    url = validate_and_normalize_path(path);
+    free(path);
+  }
 
   if (url != NULL) {
     path = strdup(url);
