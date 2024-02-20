@@ -1,96 +1,128 @@
-#include <stdbool.h>
-#include <string.h>
-#include <stdio.h>
+
+#include "defineds.h"
 #include <stdlib.h>
+#include <string.h>
 
-bool validate_path(const char *path) {
-  // Check for empty path
-  if (!path || !*path) {
-    return false;
+/**
+ * @brief Validates and normalizes a file path.
+ *
+ * This function validates and normalizes the provided file path, ensuring that
+ * it follows standard conventions. The resulting path is returned as a newly
+ * allocated string. The caller is responsible for freeing the memory allocated
+ * for the output path.
+ *
+ * @param path The input file path to be validated and normalized.
+ *
+ * @return Returns a pointer to the validated and normalized file path, or NULL
+ *         if an error occurs during memory allocation or if the input path is
+ *         invalid.
+ */
+char *validate_and_normalize_path(const char *path) {
+  // Allocate memory for the output path using calloc for zero-initialization
+  char *output =
+      calloc(MAX_PATH_LENGTH + 1, sizeof(char)); // +1 for null terminator
+  if (!output) {
+    return NULL; // Handle allocation failure
   }
 
-  char path_copy[strlen(path) + 1];
-  strcpy(path_copy, path);
+  const int len = strlen(path);
+  int out_len = 0; // Track output path length
 
-  // Start from the root
-  char current_path[strlen(path) + 1];
-  strcpy(current_path, "/");
+  if (path[0] != '\\' || path[0] != '/') {
+    output[0] = '/';
+    out_len++;
+  }
 
-  // Split the path by '/'
-  char *component = strtok(path_copy, "/");
-  while (component) {
-    // Check if component is valid
-    if (strcmp(component, "..") == 0) {
-      // Go up one level, but don't allow going above the root
-      if (strlen(current_path) > 1) {
-        // Remove the last directory from current_path
-        char *last_slash = strrchr(current_path, '/');
-        *last_slash = '\0';
-      } else {
-        // Trying to go above the root, invalid path
-	printf("result:%s\n", current_path);
-        return false;
+  for (int i = 0; i < len; i++) {
+    if (path[i] == '/' || path[i] == '\\') {
+      // Handle slashes
+      if (out_len == 0 || output[out_len - 1] != '/') {
+        // Add a single separator only if not empty or preceded by another
+        if (out_len < MAX_PATH_LENGTH) {
+          output[out_len++] = '/';
+        } else {
+          // Handle overflow: return NULL or set an error flag
+          free(output);
+          return NULL;
+        }
+      } else if (out_len != 0 && (output[out_len - 1] == '/') ||
+                 (output[out_len - 1] == '\\')) {
+        out_len = 0;
+        output[out_len++] = '/';
       }
-    } else if (strcmp(component, ".") == 0) {
-      // Stay in the same directory (no change)
+    } else if (path[i] == '.') {
+      if ((i + 1 < len) && path[i + 1] == '.') {
+        // Handle ".."
+        out_len--;
+        // Remove previous elements until a separator or beginning (excluding
+        // root)
+        while (out_len > 1 && output[out_len - 1] != '/') {
+          out_len--;
+        }
+        if (out_len > 1) {
+          out_len--;
+        }
+        i++;
+      } else if ((i + 1 < len) && path[i + 1] == '/') {
+        // Handle "."
+        // No change needed, skip next character
+        i++;
+      } else {
+        // Handle file extension or single "."
+        if (out_len < MAX_PATH_LENGTH) {
+          output[out_len++] = path[i];
+        } else {
+          // Handle overflow
+          free(output);
+          return NULL;
+        }
+      }
     } else {
-      // Append the component to current_path
-      strcat(current_path, "/");
-      strcat(current_path, component);
+      // Add other characters
+      if (out_len < MAX_PATH_LENGTH) {
+        output[out_len++] = path[i];
+      } else {
+        // Handle overflow
+        free(output);
+        return NULL;
+      }
     }
-
-    // Move to the next component
-    component = strtok(NULL, "/");
   }
 
-  // Check if the final path is valid (not above the root)
-  printf("result:%s\n", current_path);
-  return strlen(current_path) >= 1;
+  // Optionally: null-terminate the output path explicitly
+  output[out_len] = '\0';
+
+  return output;
 }
 
 #if 0
-void test_validate_path() {
-  // Test cases with expected results
-  struct test_case {
-    const char *path;
-    bool expected_result;
-  } test_cases[] = {
-    {"/", true},
-    {"/home", true},
-    {"/home/user", true},
-    {"../", false},
-    {"../../", false},
-    {"../home", false},
-    {"/home/..", true},
-    {"/home/./user", true},
-    {"/home//user", true},
-    {"/home/user/./file.txt", true},
-    {"/home/user/../file.txt", true},
-    {"", false},
-    {NULL, false},
-  };
-
-  // Run each test case
-  for (int i = 0; i < sizeof(test_cases) / sizeof(test_cases[0]); i++) {
-    const char *path = test_cases[i].path;
-    bool expected_result = test_cases[i].expected_result;
-    bool actual_result = validate_path(path);
-
-    // Print test case and result
-    printf("Test case: %s - Expected: %d, Actual: %d\n\n", path, expected_result, actual_result);
-
-    // Assert if results don't match
-    if (actual_result != expected_result) {
-      printf("Test case failed!\n");
-      exit(1); // Indicate test failure
-    }
-  }
-
-  printf("All test cases passed!\n");
-}
 
 int main() {
-  test_validate_path();
-  return 0;
+    const char* test_cases[] = {
+        "/",
+        "/home",
+        "\\",
+        "/home/../../..",
+        "/home/./user",
+        "/home/../user/file.txt",
+        "/home/..\\user/file/test.txt",
+        "/home/user/../..",
+        "/home/../user/./../file.txt",
+        "home/../user/./../file.txt",
+	      "/home/user//file.txt",
+	      "/home/./user/./test/text.txt",
+	      "/home/user/../test/text"
+    };
+
+    int num_test_cases = sizeof(test_cases) / sizeof(test_cases[0]);
+
+    for (int i = 0; i < num_test_cases; ++i) {
+        char* result = validate_and_normalize_path(test_cases[i]);
+        printf("Input: %s\nOutput: %s\n\n", test_cases[i], result);
+        free(result);
+    }
+
+    return 0;
 }
+
 #endif

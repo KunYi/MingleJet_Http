@@ -6,33 +6,34 @@
 
 /* include libuv & llhttp */
 #include "defineds.h"
+#include "utils.h"
 #include "webserver.h"
 #include <llhttp.h>
 #include <utlist.h>
 #include <uv.h>
 
 static const char *res404content = "<!DOCTYPE html>"
-                                  "<html>"
-                                  "<header>"
-                                  "<title>MingleJet</title>"
-                                  "</header>"
-                                  "<body>"
-                                  "<H1>Not Found</H1>"
-                                  "</body>"
-                                  "</html>";
+                                   "<html>"
+                                   "<header>"
+                                   "<title>MingleJet</title>"
+                                   "</header>"
+                                   "<body>"
+                                   "<H1>Not Found</H1>"
+                                   "</body>"
+                                   "</html>";
 
-static const char* res500content = "<!DOCTYPE html>"
-                                  "<html>"
-                                  "<header>"
-                                  "<title>MingleJet</title>"
-                                  "</header>"
-                                  "<body>"
-                                  "<h1>500 Internal Server Error</h1>"
-                                  "<p>An unexpected error occurred while processing your request.</p>"
-                                  "<p>Please try again later.</p>"
-                                  "</body>"
-                                  "</html>";
-
+static const char *res500content =
+    "<!DOCTYPE html>"
+    "<html>"
+    "<header>"
+    "<title>MingleJet</title>"
+    "</header>"
+    "<body>"
+    "<h1>500 Internal Server Error</h1>"
+    "<p>An unexpected error occurred while processing your request.</p>"
+    "<p>Please try again later.</p>"
+    "</body>"
+    "</html>";
 
 static const char *response401 = "HTTP/1.1 401 Unauthorized\r\n"
                                  "Location: %s\r\n"
@@ -275,15 +276,19 @@ static const char *status_string(llhttp_status_t status) {
   return "Unknow Status";
 }
 
-static const int make_header_status(llhttp_status_t status, char *buf, uint32_t len) {
-  return snprintf(buf, len, "HTTP/1.1 %d %s\r\n", status, status_string(status));
+static const int make_header_status(llhttp_status_t status, char *buf,
+                                    uint32_t len) {
+  return snprintf(buf, len, "HTTP/1.1 %d %s\r\n", status,
+                  status_string(status));
 }
 
-static const int make_header_content_type(const char *content_type, char *buf, uint32_t len) {
+static const int make_header_content_type(const char *content_type, char *buf,
+                                          uint32_t len) {
   return snprintf(buf, len, "Content-Type: %s\r\n", content_type);
 }
 
-static const int make_header_content_length(size_t content_length, char *buf, uint32_t len) {
+static const int make_header_content_length(size_t content_length, char *buf,
+                                            uint32_t len) {
   return snprintf(buf, len, "Content-Length: %ld\r\n", content_length);
 }
 
@@ -397,16 +402,24 @@ static void check_default_files_async(uv_fs_t *fs_req) {
       // send reponse;
       uv_write_t *write_req = malloc(sizeof(uv_write_t));
       write_req->data = (void *)client;
-      uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2, on_write);
+      uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2,
+               on_write);
       uv_fs_req_cleanup(fs_req);
       free(fs_req);
       return;
     }
 
     char path[MAX_PATH_LENGTH];
-    req->length_path =
-        snprintf(path, MAX_PATH_LENGTH, "%s%s%s", web_config->www_root,
-                 req->url, web_config->defaults[req->try_default]);
+    const int len = strlen(req->url);
+    if (len > 1 && req->url[len - 1] != '/') {
+      req->length_path =
+          snprintf(path, MAX_PATH_LENGTH, "%s%s/%s", web_config->www_root,
+                   req->url, web_config->defaults[req->try_default]);
+    } else {
+      req->length_path =
+          snprintf(path, MAX_PATH_LENGTH, "%s%s%s", web_config->www_root,
+                   req->url, web_config->defaults[req->try_default]);
+    }
 
     if (req->length_path >= MAX_PATH_LENGTH) {
       client_t *client = req->client;
@@ -428,7 +441,7 @@ static void check_default_files_async(uv_fs_t *fs_req) {
     }
 
     // next default req
-    fprintf(stdout, "Find default file:%s\n", fs_req->path);
+    fprintf(stdout, "try next default file:%s\n", path);
     uv_fs_t *new_req = malloc(sizeof(uv_fs_t));
     new_req->data = req;
     uv_fs_stat(loop, new_req, path, check_default_files_async);
@@ -464,7 +477,8 @@ static void check_path_async(uv_fs_t *fs_req) {
     // send reponse;
     uv_write_t *write_req = malloc(sizeof(uv_write_t));
     write_req->data = (void *)client;
-    uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2, on_write);
+    uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2,
+             on_write);
     uv_fs_req_cleanup(fs_req);
     free(fs_req);
     return;
@@ -475,8 +489,14 @@ static void check_path_async(uv_fs_t *fs_req) {
     req->try_default = 0;
 
     char path[MAX_PATH_LENGTH];
-    req->length_path = snprintf(path, MAX_PATH_LENGTH, "%s%s", fs_req->path,
-                                web_config->defaults[req->try_default]);
+    const int len = strlen(fs_req->path);
+    if (len > 1 && fs_req->path[len - 1] != '/') {
+      req->length_path = snprintf(path, MAX_PATH_LENGTH, "%s/%s", fs_req->path,
+                                  web_config->defaults[req->try_default]);
+    } else {
+      req->length_path = snprintf(path, MAX_PATH_LENGTH, "%s%s", fs_req->path,
+                                  web_config->defaults[req->try_default]);
+    }
     fprintf(stdout, "try to find default file%s\n", path);
 
     uv_fs_t *new_req = malloc(sizeof(uv_fs_t));
@@ -546,8 +566,20 @@ int on_url(llhttp_t *parser, const char *at, size_t length) {
   client_t *client = (client_t *)parser->data;
   if (client->request.url != (char *)NULL)
     free(client->request.url);
-  client->request.length_url = (uint32_t)length;
-  client->request.url = strndup(at, length);
+
+  char *path = strndup(at, length);
+  char *url = validate_and_normalize_path(path);
+  free(path);
+
+  if (url != NULL) {
+    path = strdup(url);
+    free(url);
+    client->request.length_url = (uint32_t)strlen(path);
+    client->request.url = path;
+  } else {
+    client->request.url = strdup("/");
+    client->request.length_url = strlen(client->request.url);
+  }
   return 0;
 }
 
