@@ -330,7 +330,7 @@ static void final_sendfile(uv_fs_t *fs_req) {
   const request_t *req = &client->request;
 
   uv_fs_t *req_close = (uv_fs_t *)malloc(sizeof(uv_fs_t));
-  uv_fs_close(loop, req_close, req->open, on_close_sendfile);
+  uv_fs_close(loop, req_close, req->open_file, on_close_sendfile);
   uv_fs_req_cleanup(fs_req);
   free(fs_req);
   CLIENT_CLEAR_IN_REF(client);
@@ -347,7 +347,7 @@ static void send_file_context(uv_fs_t *fs_req) {
     send_req->data = client;
     uv_fileno((uv_handle_t *)&client->handle, &sendfd);
     CLIENT_SET_IN_REF(client);
-    req->open = fs_req->result;
+    req->open_file = fs_req->result; // store the file handler
     uv_fs_sendfile(loop, send_req, sendfd, fs_req->result, 0,
                    req->length_content, final_sendfile);
 #ifdef _WIN32

@@ -2,6 +2,7 @@
 #include "defineds.h"
 #include <llhttp.h>
 #include <stdint.h>
+#include <utarray.h>
 #include <uv.h>
 
 typedef struct route_s {
@@ -28,10 +29,12 @@ typedef struct request_s {
   char *path_content;
   size_t length_content;
   const char *mime_content;
-  uv_file open;
+  UT_array *query_param;
+  uv_file open_file;
   uint32_t try_default;
   uv_buf_t response;
   client_t *client;
+
 } request_t;
 
 typedef struct client_s {
