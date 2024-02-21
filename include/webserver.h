@@ -3,6 +3,7 @@
 #include <llhttp.h>
 #include <stdint.h>
 #include <utarray.h>
+#include <utlist.h>
 #include <uv.h>
 
 typedef struct route_s {
@@ -21,6 +22,11 @@ typedef struct webconfig_s {
 
 struct client_s;
 typedef struct client_s client_t;
+
+typedef struct get_param_s {
+  char *name;
+  char *value;
+} get_param_t;
 
 typedef struct request_s {
   char *url;

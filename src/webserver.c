@@ -8,9 +8,14 @@
 #include "defineds.h"
 #include "utils.h"
 #include "webserver.h"
-#include <llhttp.h>
-#include <utlist.h>
-#include <uv.h>
+
+static void get_param_cleanup(get_param_t *param) {
+  free(param->name);
+  free(param->value);
+}
+
+static UT_icd get_params_icd = {sizeof(get_param_t), NULL, NULL,
+                                (void (*)(void *))get_param_cleanup};
 
 static const char *res404content = "<!DOCTYPE html>"
                                    "<html>"
@@ -194,6 +199,17 @@ static void on_write(uv_write_t *req, int status);
 
 static client_t *activeClientList = NULL;
 
+static void free_client(client_t *client) {
+  if (client->request.url != (char *)NULL) {
+    free(client->request.url);
+  }
+
+  if (client->request.query_param != NULL) {
+    utarray_free(client->request.query_param);
+  }
+  free(client);
+}
+
 static void cleanup_freeList(uv_timer_t *handle) {
   UNUSED(handle);
   // clean
@@ -201,9 +217,7 @@ static void cleanup_freeList(uv_timer_t *handle) {
   LL_FOREACH_SAFE(activeClientList, elt, tmp) {
     if (CLIENT_IS_FLAGS_FREE(elt)) {
       LL_DELETE(activeClientList, elt);
-      if (elt->request.url != NULL)
-        free(elt->request.url);
-      free(elt);
+      free_client(elt);
     }
   }
 }
@@ -212,10 +226,7 @@ static void cleanup_resources(void) {
   client_t *elt, *tmp;
   LL_FOREACH_SAFE(activeClientList, elt, tmp) {
     LL_DELETE(activeClientList, elt);
-    if (elt->request.url != (char *)NULL) {
-      free(elt->request.url);
-    }
-    free(elt);
+    free_client(elt);
   }
 }
 
@@ -316,7 +327,7 @@ static uv_buf_t make_response_header(llhttp_status_t status, request_t *req) {
   }
 
   req->response = uv_buf_init(malloc(cnt), cnt);
-  memcpy(req->response.base, buf, req->response.len);
+  strncpy(req->response.base, buf, cnt);
   return req->response;
 }
 
@@ -394,14 +405,14 @@ static void check_default_files_async(uv_fs_t *fs_req) {
     // fprintf(stdout, "Can't find file: %s\n", fs_req->path);
     req->try_default++;
     if (req->try_default >= web_config->def_cnt) {
-      uv_buf_t resbuf[2];
+      uv_buf_t *resbuf = malloc(2 * sizeof(uv_buf_t));
       req->mime_content = match_mime_type(".html");
       req->length_content = strlen(res404content);
       resbuf[0] = make_response_header(404, req);
-      resbuf[1] = uv_buf_init((char *)res404content, strlen(res404content));
+      resbuf[1] = uv_buf_init(strdup(res404content), strlen(res404content));
       // send reponse;
       uv_write_t *write_req = malloc(sizeof(uv_write_t));
-      write_req->data = (void *)client;
+      write_req->data = (void *)resbuf;
       uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2,
                on_write);
       uv_fs_req_cleanup(fs_req);
@@ -424,15 +435,15 @@ static void check_default_files_async(uv_fs_t *fs_req) {
     if (req->length_path >= MAX_PATH_LENGTH) {
       client_t *client = req->client;
 
-      uv_buf_t resbuf[2];
+      uv_buf_t *resbuf = malloc(2 * sizeof(uv_buf_t));
       req->mime_content = match_mime_type(".html");
       req->length_content = strlen(res500content);
       resbuf[0] = make_response_header(500, req);
-      resbuf[1] = uv_buf_init((char *)res500content, strlen(res500content));
+      resbuf[1] = uv_buf_init(strdup(res500content), strlen(res500content));
 
       // send response
       uv_write_t *write_req = malloc(sizeof(uv_write_t));
-      write_req->data = (void *)client;
+      write_req->data = (void *)resbuf;
       uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2,
                on_write);
       uv_fs_req_cleanup(fs_req);
@@ -468,15 +479,16 @@ static void check_path_async(uv_fs_t *fs_req) {
   if (fs_req->result < 0) {
     fprintf(stdout, "check fs_stat failed\n");
 
-    uv_buf_t resbuf[2];
     req->mime_content = match_mime_type(".html");
     req->length_content = strlen(res404content);
-    resbuf[0] = make_response_header(404, req);
-    resbuf[1] = uv_buf_init((char *)res404content, strlen(res404content));
 
+    uv_buf_t *resbuf = malloc(2 * sizeof(uv_buf_t));
+    resbuf[0] = make_response_header(404, req);
+    resbuf[1] = uv_buf_init(strdup(res404content), strlen(res404content));
     // send reponse;
     uv_write_t *write_req = malloc(sizeof(uv_write_t));
-    write_req->data = (void *)client;
+    write_req->data = (void *)resbuf;
+
     uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2,
              on_write);
     uv_fs_req_cleanup(fs_req);
@@ -529,15 +541,15 @@ static void process_request(llhttp_t *parser, request_t *req) {
   if (req->length_path >= MAX_PATH_LENGTH) {
     client_t *client = req->client;
 
-    uv_buf_t resbuf[2];
+    uv_buf_t *resbuf = malloc(2 * sizeof(uv_buf_t));
     req->mime_content = match_mime_type(".html");
     req->length_content = strlen(res500content);
     resbuf[0] = make_response_header(500, req);
-    resbuf[1] = uv_buf_init((char *)res500content, strlen(res500content));
+    resbuf[1] = uv_buf_init(strdup(res500content), strlen(res500content));
 
     // send response
     uv_write_t *write_req = malloc(sizeof(uv_write_t));
-    write_req->data = (void *)client;
+    write_req->data = (void *)resbuf;
     uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2,
              on_write);
     return;
@@ -561,6 +573,32 @@ static int on_message_complete(llhttp_t *parser) {
   return 0;
 }
 
+static void parse_get_url(const char *url, UT_array *array) {
+  char *token;
+  // Make a copy to avoid modifying the original string
+  char *url_copy = strdup(url);
+  char *saveptr;
+
+  token = strtok_r(url_copy, "&", &saveptr); // Split the string by '&'
+
+  while (token != NULL) {
+    char *param_name =
+        strtok(token, "="); // Split each token by '=' to get parameter name
+    char *param_value = strtok(NULL, "="); // Get parameter value
+
+    if (param_name != NULL && param_value != NULL) {
+      get_param_t param;
+      param.name = strdup(param_name);
+      param.value = strdup(param_value);
+      utarray_push_back(array, &param);
+    }
+
+    token = strtok_r(NULL, "&", &saveptr);
+  }
+
+  free(url_copy); // Free the memory allocated for the copied string
+}
+
 // Callback to handle URL
 int on_url(llhttp_t *parser, const char *at, size_t length) {
   client_t *client = (client_t *)parser->data;
@@ -576,7 +614,9 @@ int on_url(llhttp_t *parser, const char *at, size_t length) {
     strncpy(t_url, path, len);
     t_url[len] = '\0';
     url = validate_and_normalize_path(t_url);
-    // TODO: parse parameters
+    free(t_url);
+    utarray_new(client->request.query_param, &get_params_icd);
+    parse_get_url(question + 1, client->request.query_param);
     free(path);
   } else {
     url = validate_and_normalize_path(path);
@@ -640,13 +680,20 @@ static void on_close(uv_handle_t *handle) {
   CLIENT_CLEAR_IN_USE(client);
   if (CLIENT_IS_FLAGS_FREE(client)) {
     LL_DELETE(activeClientList, client);
-    if (client->request.url != NULL)
-      free(client->request.url);
-    free(client);
+    free_client(client);
   }
 }
 
-static void on_write(uv_write_t *req, int status) { free(req); }
+static void on_write(uv_write_t *req, int status) {
+  if (status == 0) {
+    uv_buf_t *ptr = (uv_buf_t *)req->data;
+    for (unsigned int i = 0; i < req->nbufs; ++i) {
+      free(ptr[i].base);
+    }
+    free(ptr);
+  }
+  free(req);
+}
 
 // Callback to handle HTTP request data
 void on_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
@@ -744,7 +791,7 @@ static void showLibrariesInfo(void) {
           UV_VERSION_PATCH, UV_VERSION_IS_RELEASE ? "Release" : "Testing");
   fprintf(stdout, "  llhttp:%d.%d.%d\n", LLHTTP_VERSION_MAJOR,
           LLHTTP_VERSION_MINOR, LLHTTP_VERSION_PATCH);
-  fprintf(stdout, "  utlist:%s\n", STR_VERSION(UTLIST_VERSION));
+  fprintf(stdout, "  uthash:%s (for utlist/utarray)\n", STR_VERSION(UTLIST_VERSION));
 }
 
 int webserver(uv_loop_t *ev_loop, webconfig_t *config) {

@@ -22,8 +22,8 @@ Launch MingleJet...
 
 use the below third party components
   libuv:1.48.1 Release
-  llhttp:9.1.3
-  utlist:2.3.0
+  llhttp:9.2.0
+  uthash:2.3.0 (for utlist/utarray)
 
 Server listening on port 8080...
 on_message_begin HTTP method: 0l
