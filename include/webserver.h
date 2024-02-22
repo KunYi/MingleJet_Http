@@ -37,10 +37,11 @@ typedef struct request_s {
   const char *mime_content;
   UT_array *query_param;
   uv_file open_file;
-  uint32_t try_default;
+  char *body;
+  size_t length_body;
+  uint32_t default_filename_tries;
   uv_buf_t response;
   client_t *client;
-
 } request_t;
 
 typedef struct client_s {

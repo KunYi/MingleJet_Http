@@ -200,10 +200,14 @@ static void on_write(uv_write_t *req, int status);
 static client_t *activeClientList = NULL;
 
 static void free_client(client_t *client) {
-  if (client->request.url != (char *)NULL) {
+  if (client->request.url != NULL) {
     free(client->request.url);
+    client->request.url = NULL;
   }
-
+  if (client->request.body != NULL) {
+    free(client->request.body);
+    client->request.body = NULL;
+  }
   if (client->request.query_param != NULL) {
     utarray_free(client->request.query_param);
   }
@@ -403,8 +407,8 @@ static void check_default_files_async(uv_fs_t *fs_req) {
 
   if (fs_req->result != 0) {
     // fprintf(stdout, "Can't find file: %s\n", fs_req->path);
-    req->try_default++;
-    if (req->try_default >= web_config->def_cnt) {
+    req->default_filename_tries++;
+    if (req->default_filename_tries >= web_config->def_cnt) {
       uv_buf_t *resbuf = malloc(2 * sizeof(uv_buf_t));
       req->mime_content = match_mime_type(".html");
       req->length_content = strlen(res404content);
@@ -425,11 +429,11 @@ static void check_default_files_async(uv_fs_t *fs_req) {
     if (len > 1 && req->url[len - 1] != '/') {
       req->length_path =
           snprintf(path, MAX_PATH_LENGTH, "%s%s/%s", web_config->www_root,
-                   req->url, web_config->defaults[req->try_default]);
+                   req->url, web_config->defaults[req->default_filename_tries]);
     } else {
       req->length_path =
           snprintf(path, MAX_PATH_LENGTH, "%s%s%s", web_config->www_root,
-                   req->url, web_config->defaults[req->try_default]);
+                   req->url, web_config->defaults[req->default_filename_tries]);
     }
 
     if (req->length_path >= MAX_PATH_LENGTH) {
@@ -498,16 +502,18 @@ static void check_path_async(uv_fs_t *fs_req) {
 
   const uv_stat_t *stat = &fs_req->statbuf;
   if (S_ISDIR(stat->st_mode)) {
-    req->try_default = 0;
+    req->default_filename_tries = 0;
 
     char path[MAX_PATH_LENGTH];
     const int len = strlen(fs_req->path);
     if (len > 1 && fs_req->path[len - 1] != '/') {
-      req->length_path = snprintf(path, MAX_PATH_LENGTH, "%s/%s", fs_req->path,
-                                  web_config->defaults[req->try_default]);
+      req->length_path =
+          snprintf(path, MAX_PATH_LENGTH, "%s/%s", fs_req->path,
+                   web_config->defaults[req->default_filename_tries]);
     } else {
-      req->length_path = snprintf(path, MAX_PATH_LENGTH, "%s%s", fs_req->path,
-                                  web_config->defaults[req->try_default]);
+      req->length_path =
+          snprintf(path, MAX_PATH_LENGTH, "%s%s", fs_req->path,
+                   web_config->defaults[req->default_filename_tries]);
     }
     fprintf(stdout, "try to find default file%s\n", path);
 
@@ -663,9 +669,11 @@ static int on_headers_complete(llhttp_t *parser) {
 }
 
 static int on_body(llhttp_t *parser, const char *at, size_t length) {
-  UNUSED(parser);
-  UNUSED(at);
-  UNUSED(length);
+  client_t *client = (client_t *)parser->data;
+  if (at != NULL && length > 0) {
+    client->request.body = strndup(at, length);
+    client->request.length_body = length;
+  }
   return 0;
 }
 
@@ -791,7 +799,8 @@ static void showLibrariesInfo(void) {
           UV_VERSION_PATCH, UV_VERSION_IS_RELEASE ? "Release" : "Testing");
   fprintf(stdout, "  llhttp:%d.%d.%d\n", LLHTTP_VERSION_MAJOR,
           LLHTTP_VERSION_MINOR, LLHTTP_VERSION_PATCH);
-  fprintf(stdout, "  uthash:%s (for utlist/utarray)\n", STR_VERSION(UTLIST_VERSION));
+  fprintf(stdout, "  uthash:%s (for utlist/utarray)\n",
+          STR_VERSION(UTLIST_VERSION));
 }
 
 int webserver(uv_loop_t *ev_loop, webconfig_t *config) {
