@@ -28,20 +28,24 @@ typedef struct get_param_s {
   char *value;
 } get_param_t;
 
+typedef struct response_s {
+  char *path_content;
+  size_t length_path;
+  size_t size_content;
+  const char *mime_content;
+  uv_buf_t *buf;
+  uv_file open_file;
+} response_t;
+
 typedef struct request_s {
+  uint8_t method;
   char *url;
   uint32_t length_url;
-  size_t length_path;
-  char *path_content;
-  size_t length_content;
-  const char *mime_content;
   UT_array *query_param;
-  uv_file open_file;
+
   char *body;
   size_t length_body;
   uint32_t default_filename_tries;
-  uv_buf_t response;
-  client_t *client;
 } request_t;
 
 typedef struct client_s {
@@ -51,6 +55,7 @@ typedef struct client_s {
   uint32_t flags : 2;
 
   request_t request;
+  response_t response;
 
   struct client_s *next; /* for utlist */
 } client_t;

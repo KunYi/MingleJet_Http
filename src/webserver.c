@@ -307,8 +307,8 @@ static const int make_header_content_length(size_t content_length, char *buf,
   return snprintf(buf, len, "Content-Length: %ld\r\n", content_length);
 }
 
-static uv_buf_t make_response_header(llhttp_status_t status, request_t *req) {
-  if (req == NULL) {
+static uv_buf_t make_response_header(llhttp_status_t status, response_t *res) {
+  if (res == NULL) {
     return uv_buf_init(NULL, 0);
   }
 
@@ -320,19 +320,62 @@ static uv_buf_t make_response_header(llhttp_status_t status, request_t *req) {
   if (ret != NULL) {
     cnt = make_header_status(status, ret, len);
     len -= cnt;
-    if (req->mime_content != NULL) {
-      cnt += make_header_content_type(req->mime_content, ret + cnt, len);
+    if (res->mime_content != NULL) {
+      cnt += make_header_content_type(res->mime_content, ret + cnt, len);
       len -= cnt;
     }
     // always include 'Content-Length' field, even the value is zero
-    cnt += make_header_content_length(req->length_content, ret + cnt, len);
+    cnt += make_header_content_length(res->size_content, ret + cnt, len);
     len -= cnt;
     cnt += snprintf(ret + cnt, len, "\r\n");
   }
 
-  req->response = uv_buf_init(malloc(cnt), cnt);
-  strncpy(req->response.base, buf, cnt);
-  return req->response;
+  uv_buf_t uv_buf = uv_buf_init(malloc(cnt), cnt);
+  strncpy(uv_buf.base, buf, cnt);
+  return uv_buf;
+}
+
+static void on_final_fix_response(uv_write_t *req, int status) {
+  if (status == 0) {
+    assert(req->nbufs == 2);
+    client_t *client = (client_t *)req->data;
+    free(client->response.buf[0].base);
+
+    // the content for pre-defined fixed address
+    // not in heap/malloc
+    // free(client->response.buf[1].base);
+    free(client->response.buf);
+    client->response.buf = NULL;
+  }
+  free(req);
+}
+
+static void make_fixed_response(client_t *client, const llhttp_status_t code,
+                                const char *mime_type, const char *content) {
+  response_t *res = &client->response;
+  const size_t len = strlen(content);
+
+  res->buf = malloc(2 * sizeof(uv_buf_t));
+  res->mime_content = mime_type;
+  res->size_content = len;
+  res->buf[0] = make_response_header(code, res);
+  res->buf[1] = uv_buf_init((char *)content, len);
+
+  // send response
+  uv_write_t *write_req = malloc(sizeof(uv_write_t));
+  write_req->data = (void *)client;
+  uv_write(write_req, (uv_stream_t *)&client->handle, res->buf, 2,
+           on_final_fix_response);
+}
+
+static void send_text_response(client_t *client, const llhttp_status_t code,
+                               const char *content) {
+  make_fixed_response(client, code, match_mime_type(".txt"), content);
+}
+
+static void send_html_response(client_t *client, const llhttp_status_t code,
+                               const char *content) {
+  make_fixed_response(client, code, match_mime_type(".html"), content);
 }
 
 static void on_close_sendfile(uv_fs_t *fs_req) {
@@ -342,18 +385,18 @@ static void on_close_sendfile(uv_fs_t *fs_req) {
 
 static void final_sendfile(uv_fs_t *fs_req) {
   client_t *client = (client_t *)fs_req->data;
-  const request_t *req = &client->request;
+  const response_t *res = &client->response;
 
   uv_fs_t *req_close = (uv_fs_t *)malloc(sizeof(uv_fs_t));
-  uv_fs_close(loop, req_close, req->open_file, on_close_sendfile);
+  uv_fs_close(loop, req_close, res->open_file, on_close_sendfile);
   uv_fs_req_cleanup(fs_req);
   free(fs_req);
   CLIENT_CLEAR_IN_REF(client);
 }
 
 static void send_file_context(uv_fs_t *fs_req) {
-  request_t *req = (request_t *)fs_req->data;
-  client_t *client = req->client;
+  client_t *client = (client_t *)fs_req->data;
+  response_t *res = &client->response;
 
   // FIXME: only for linux
   if (fs_req->result >= 0) {
@@ -362,63 +405,58 @@ static void send_file_context(uv_fs_t *fs_req) {
     send_req->data = client;
     uv_fileno((uv_handle_t *)&client->handle, &sendfd);
     CLIENT_SET_IN_REF(client);
-    req->open_file = fs_req->result; // store the file handler
-    uv_fs_sendfile(loop, send_req, sendfd, fs_req->result, 0,
-                   req->length_content, final_sendfile);
+    res->open_file = fs_req->result; // store the file handler
+    uv_fs_sendfile(loop, send_req, sendfd, fs_req->result, 0, res->size_content,
+                   final_sendfile);
 #ifdef _WIN32
 #error "because windows not support sendfile(), need implement"
 #endif
   }
 
   // release path
-  free(req->path_content);
-  req->path_content = NULL;
+  free(res->path_content);
+  res->path_content = NULL;
 
   uv_fs_req_cleanup(fs_req);
   free(fs_req);
 }
 
 static void open_send_file(uv_write_t *req, int status) {
-  request_t *request = (request_t *)req->data;
+  client_t *client = (client_t *)req->data;
+  response_t *res = &client->response;
   if (status == 0) {
     uv_fs_t *fs_req = malloc(sizeof(uv_fs_t));
-    fs_req->data = request;
-    uv_fs_open(loop, fs_req, request->path_content, O_RDONLY,
-               (S_IRUSR | S_IRGRP), send_file_context);
+    fs_req->data = client;
+    uv_fs_open(loop, fs_req, res->path_content, O_RDONLY, (S_IRUSR | S_IRGRP),
+               send_file_context);
   }
+
+  free(res->buf->base);
+  free(res->buf);
   free(req);
-  if (request->response.base != NULL)
-    free(request->response.base);
 }
 
-static void found_and_sendfs_req(request_t *req) {
-  client_t *client = req->client;
-  uv_buf_t resbuf = make_response_header(200, req);
+static void found_and_sendfs_req(client_t *client) {
+  response_t *res = &client->response;
+  res->buf = malloc(sizeof(uv_buf_t));
+  *res->buf = make_response_header(HTTP_STATUS_OK, res);
   // send header of response;
   uv_write_t *write_req = malloc(sizeof(uv_write_t));
-  write_req->data = (void *)req;
-  uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf, 1,
+  write_req->data = (void *)client;
+  uv_write(write_req, (uv_stream_t *)&client->handle, res->buf, 1,
            open_send_file);
 }
 
 static void check_default_files_async(uv_fs_t *fs_req) {
-  request_t *req = (request_t *)fs_req->data;
-  client_t *client = req->client;
+  client_t *client = (client_t *)fs_req->data;
+  request_t *req = &client->request;
+  response_t *res = &client->response;
 
   if (fs_req->result != 0) {
     // fprintf(stdout, "Can't find file: %s\n", fs_req->path);
     req->default_filename_tries++;
     if (req->default_filename_tries >= web_config->def_cnt) {
-      uv_buf_t *resbuf = malloc(2 * sizeof(uv_buf_t));
-      req->mime_content = match_mime_type(".html");
-      req->length_content = strlen(res404content);
-      resbuf[0] = make_response_header(404, req);
-      resbuf[1] = uv_buf_init(strdup(res404content), strlen(res404content));
-      // send reponse;
-      uv_write_t *write_req = malloc(sizeof(uv_write_t));
-      write_req->data = (void *)resbuf;
-      uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2,
-               on_write);
+      send_html_response(client, HTTP_STATUS_NOT_FOUND, res404content);
       uv_fs_req_cleanup(fs_req);
       free(fs_req);
       return;
@@ -427,29 +465,18 @@ static void check_default_files_async(uv_fs_t *fs_req) {
     char path[MAX_PATH_LENGTH];
     const int len = strlen(req->url);
     if (len > 1 && req->url[len - 1] != '/') {
-      req->length_path =
+      res->length_path =
           snprintf(path, MAX_PATH_LENGTH, "%s%s/%s", web_config->www_root,
                    req->url, web_config->defaults[req->default_filename_tries]);
     } else {
-      req->length_path =
+      res->length_path =
           snprintf(path, MAX_PATH_LENGTH, "%s%s%s", web_config->www_root,
                    req->url, web_config->defaults[req->default_filename_tries]);
     }
 
-    if (req->length_path >= MAX_PATH_LENGTH) {
-      client_t *client = req->client;
-
-      uv_buf_t *resbuf = malloc(2 * sizeof(uv_buf_t));
-      req->mime_content = match_mime_type(".html");
-      req->length_content = strlen(res500content);
-      resbuf[0] = make_response_header(500, req);
-      resbuf[1] = uv_buf_init(strdup(res500content), strlen(res500content));
-
-      // send response
-      uv_write_t *write_req = malloc(sizeof(uv_write_t));
-      write_req->data = (void *)resbuf;
-      uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2,
-               on_write);
+    if (res->length_path >= MAX_PATH_LENGTH) {
+      send_html_response(client, HTTP_STATUS_INTERNAL_SERVER_ERROR,
+                         res500content);
       uv_fs_req_cleanup(fs_req);
       free(fs_req);
       return;
@@ -458,7 +485,7 @@ static void check_default_files_async(uv_fs_t *fs_req) {
     // next default req
     fprintf(stdout, "try next default file:%s\n", path);
     uv_fs_t *new_req = malloc(sizeof(uv_fs_t));
-    new_req->data = req;
+    new_req->data = client;
     uv_fs_stat(loop, new_req, path, check_default_files_async);
 
     uv_fs_req_cleanup(fs_req);
@@ -467,34 +494,23 @@ static void check_default_files_async(uv_fs_t *fs_req) {
   }
 
   // find file will send the file to user
-  req->length_content = fs_req->statbuf.st_size;
-  req->path_content = strdup(fs_req->path);
-  req->mime_content = match_mime_type(fs_req->path);
-  found_and_sendfs_req(req);
+  res->size_content = fs_req->statbuf.st_size;
+  res->path_content = strdup(fs_req->path);
+  res->mime_content = match_mime_type(fs_req->path);
+  found_and_sendfs_req(client);
 
   uv_fs_req_cleanup(fs_req);
   free(fs_req);
 }
 
 static void check_path_async(uv_fs_t *fs_req) {
-  request_t *req = (request_t *)fs_req->data;
-  client_t *client = req->client;
+  client_t *client = (client_t *)fs_req->data;
+  request_t *req = &client->request;
+  response_t *res = &client->response;
 
   if (fs_req->result < 0) {
     fprintf(stdout, "check fs_stat failed\n");
-
-    req->mime_content = match_mime_type(".html");
-    req->length_content = strlen(res404content);
-
-    uv_buf_t *resbuf = malloc(2 * sizeof(uv_buf_t));
-    resbuf[0] = make_response_header(404, req);
-    resbuf[1] = uv_buf_init(strdup(res404content), strlen(res404content));
-    // send reponse;
-    uv_write_t *write_req = malloc(sizeof(uv_write_t));
-    write_req->data = (void *)resbuf;
-
-    uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2,
-             on_write);
+    send_html_response(client, HTTP_STATUS_NOT_FOUND, res404content);
     uv_fs_req_cleanup(fs_req);
     free(fs_req);
     return;
@@ -507,18 +523,18 @@ static void check_path_async(uv_fs_t *fs_req) {
     char path[MAX_PATH_LENGTH];
     const int len = strlen(fs_req->path);
     if (len > 1 && fs_req->path[len - 1] != '/') {
-      req->length_path =
+      res->length_path =
           snprintf(path, MAX_PATH_LENGTH, "%s/%s", fs_req->path,
                    web_config->defaults[req->default_filename_tries]);
     } else {
-      req->length_path =
+      res->length_path =
           snprintf(path, MAX_PATH_LENGTH, "%s%s", fs_req->path,
                    web_config->defaults[req->default_filename_tries]);
     }
     fprintf(stdout, "try to find default file%s\n", path);
 
     uv_fs_t *new_req = malloc(sizeof(uv_fs_t));
-    new_req->data = req;
+    new_req->data = client;
     uv_fs_stat(loop, new_req, path, check_default_files_async);
 
     uv_fs_req_cleanup(fs_req);
@@ -526,43 +542,34 @@ static void check_path_async(uv_fs_t *fs_req) {
     return;
   } else {
     // found a file
-    req->length_content = fs_req->statbuf.st_size;
-    req->path_content = strdup(fs_req->path);
-    req->mime_content = match_mime_type(fs_req->path);
-    found_and_sendfs_req(req);
+    res->size_content = fs_req->statbuf.st_size;
+    res->path_content = strdup(fs_req->path);
+    res->mime_content = match_mime_type(fs_req->path);
+    found_and_sendfs_req(client);
   }
 
   uv_fs_req_cleanup(fs_req);
   free(fs_req);
 }
 
-static void process_request(llhttp_t *parser, request_t *req) {
+static void process_request(llhttp_t *parser, client_t *client) {
+  request_t *req = &client->request;
+  response_t *res = &client->response;
   fprintf(stdout, "Parse pass, type:%d, method:%d, url: %s\n", parser->type,
           parser->method, req->url);
 
   char path[MAX_PATH_LENGTH];
 
-  req->length_path =
+  res->length_path =
       snprintf(path, MAX_PATH_LENGTH, "%s%s", web_config->www_root, req->url);
-  if (req->length_path >= MAX_PATH_LENGTH) {
-    client_t *client = req->client;
-
-    uv_buf_t *resbuf = malloc(2 * sizeof(uv_buf_t));
-    req->mime_content = match_mime_type(".html");
-    req->length_content = strlen(res500content);
-    resbuf[0] = make_response_header(500, req);
-    resbuf[1] = uv_buf_init(strdup(res500content), strlen(res500content));
-
-    // send response
-    uv_write_t *write_req = malloc(sizeof(uv_write_t));
-    write_req->data = (void *)resbuf;
-    uv_write(write_req, (uv_stream_t *)&client->handle, &resbuf[0], 2,
-             on_write);
+  if (res->length_path >= MAX_PATH_LENGTH) {
+    send_html_response(client, HTTP_STATUS_INTERNAL_SERVER_ERROR,
+                       res500content);
     return;
   }
 
   uv_fs_t *fs_req = malloc(sizeof(uv_fs_t));
-  fs_req->data = req;
+  fs_req->data = client;
   uv_fs_stat(loop, fs_req, path, check_path_async);
 }
 
@@ -734,9 +741,9 @@ void on_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
     return;
   }
 
-  client->request.client = client;
+  client->request.method = parser->method;
   // parsed successfully
-  process_request(parser, &client->request);
+  process_request(parser, client);
   free(buf->base);
 }
 
