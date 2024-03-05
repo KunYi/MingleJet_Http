@@ -12,7 +12,7 @@ int main() {
   const uint32_t defaluts_files = 2;
   webconfig = malloc(sizeof(webconfig_t) + (sizeof(char *) * defaluts_files));
   webconfig->host = "0.0.0.0";
-  webconfig->port = 8080;
+  webconfig->port = 4000;
   webconfig->www_root = "./dist";
   webconfig->def_cnt = defaluts_files;
   webconfig->defaults[0] = "index.html";

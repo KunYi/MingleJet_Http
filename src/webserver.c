@@ -552,11 +552,114 @@ static void check_path_async(uv_fs_t *fs_req) {
   free(fs_req);
 }
 
+int handle_healthcheck(client_t *client) {
+  request_t *req = &client->request;
+
+  if ((req->method == HTTP_GET) &&
+      (strncmp(req->url, "/healthcheck", 12) == 0)) {
+    send_text_response(client, HTTP_STATUS_OK, "OK");
+    return 0;
+  }
+  return -1;
+}
+
+int handle_create_todo(client_t *client) {
+  request_t *req = &client->request;
+
+  if ((req->method == HTTP_POST) &&
+      (strncmp(req->url, "/api/todos", 10) == 0) && (req->length_url == 10)) {
+    json_error_t error;
+    json_t *obj = json_loads(req->body, 0, &error);
+    if (obj != NULL) {
+      todo_t *todo = create_todo_from_json(obj);
+      json_decref(obj);
+      if (todos_append(todo) == 0) {
+        char *jsonstr = todos_dump();
+        if (jsonstr) {
+          send_text_response(client, HTTP_STATUS_CREATED, jsonstr);
+          free(jsonstr);
+          return 0;
+        }
+      }
+    } else {
+      fprintf(stdout, "parsing failed body\n%s\n", req->body);
+    }
+    fprintf(stdout, "Failed to call api '/api/todos'\nbody:%s\n", req->body);
+    // Handle potential errors (e.g., invalid JSON, already exists)
+    send_text_response(client, HTTP_STATUS_BAD_REQUEST, "Invalid id");
+    return 0;
+  }
+  return -1;
+}
+
+int handle_get_todos(client_t *client) {
+  request_t *req = &client->request;
+  if ((req->method == HTTP_GET) && (strncmp(req->url, "/api/todos", 10) == 0) &&
+      (req->length_url == 10)) {
+    char *jsonstr = todos_dump();
+    if (jsonstr) {
+      send_text_response(client, HTTP_STATUS_ACCEPTED, jsonstr);
+      free(jsonstr);
+      return 0;
+    }
+    send_text_response(client, HTTP_STATUS_INTERNAL_SERVER_ERROR,
+                       "failed to read");
+    return 0;
+  }
+
+  return -1;
+}
+
+static int validate_todo_patch(const char *url) {
+  if (strncmp(url, "/api/todos/", 11) == 0) {
+    char *done = strrchr(url, '/');
+    if (done && strncmp(done, "/done", 5) == 0) {
+      return 1; // api
+    }
+    return 0;
+  }
+  return 0;
+}
+
+int handle_patch_todo(client_t *client) {
+  request_t *req = &client->request;
+  if ((req->method == HTTP_PATCH) && validate_todo_patch(req->url)) {
+    // convert id
+    unsigned int id = 0;
+    id = strtoul(req->url + 11, NULL, 10);
+    if (id == 0) {
+      send_text_response(client, HTTP_STATUS_BAD_REQUEST, "Invalid id");
+      return 0;
+    }
+    todo_update(id, NULL, 1, NULL);
+    char *jsonstr = todos_dump();
+    if (jsonstr) {
+      send_text_response(client, HTTP_STATUS_ACCEPTED, jsonstr);
+      free(jsonstr);
+      return 0;
+    }
+    send_text_response(client, HTTP_STATUS_INTERNAL_SERVER_ERROR,
+                       "failed to read");
+    return 0;
+  }
+
+  return -1;
+}
+
 static void process_request(llhttp_t *parser, client_t *client) {
   request_t *req = &client->request;
   response_t *res = &client->response;
   fprintf(stdout, "Parse pass, type:%d, method:%d, url: %s\n", parser->type,
           parser->method, req->url);
+
+   if (handle_healthcheck(client) == 0)
+     return;
+   else if (handle_create_todo(client) == 0)
+     return;
+   else if (handle_get_todos(client) == 0)
+     return;
+   else if (handle_patch_todo(client) == 0)
+     return;
 
   char path[MAX_PATH_LENGTH];
 

@@ -1,8 +1,11 @@
 #pragma once
 #include "defineds.h"
+#include "todo.h"
 #include <llhttp.h>
 #include <stdint.h>
+#include <string.h>
 #include <utarray.h>
+#include <uthash.h>
 #include <utlist.h>
 #include <uv.h>
 
