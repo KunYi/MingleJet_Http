@@ -7,6 +7,8 @@
 #include <uv.h>
 #include <libxml/xmlversion.h>
 #include <nng/nng.h>
+#include <jansson.h>
+#include <jwt_export.h>
 
 typedef struct route_s {
   char *static_url_path;

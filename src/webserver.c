@@ -809,6 +809,10 @@ static void showLibrariesInfo(void) {
   fprintf(stdout, "  libxml2:%s\n", LIBXML_DOTTED_VERSION);
   fprintf(stdout, "  nng:%d.%d.%d\n", NNG_MAJOR_VERSION,
           NNG_MINOR_VERSION, NNG_PATCH_VERSION);
+  fprintf(stdout, "  jansson:%d.%d.%d\n", JANSSON_MAJOR_VERSION,
+          JANSSON_MINOR_VERSION, JANSSON_MICRO_VERSION);
+  fprintf(stdout, "  libjwt:%d.%d.%d\n", JWT_VERSION_MAJOR,
+          JWT_VERSION_MINOR, JWT_VERSION_MICRO);
   fprintf(stdout, "  uthash:%s (for utlist/utarray)\n",
           STR_VERSION(UTLIST_VERSION));
 }
