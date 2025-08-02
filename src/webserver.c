@@ -8,6 +8,7 @@
 #include "defineds.h"
 #include "utils.h"
 #include "webserver.h"
+#include "libxml/xmlreader.h"
 
 static void get_param_cleanup(get_param_t *param) {
   free(param->name);
@@ -196,6 +197,7 @@ static uv_timer_t release_timer;
 static llhttp_settings_t settings;
 
 static void on_write(uv_write_t *req, int status);
+static void on_soap_write(uv_write_t *req, int status);
 
 static client_t *activeClientList = NULL;
 
@@ -332,6 +334,8 @@ static uv_buf_t make_response_header(llhttp_status_t status, response_t *res) {
 
   uv_buf_t uv_buf = uv_buf_init(malloc(cnt), cnt);
   strncpy(uv_buf.base, buf, cnt);
+  // memcpy(uv_buf.base, buf, cnt);
+  // uv_buf.base[cnt] = '\0'; // Ensure null-termination
   return uv_buf;
 }
 
@@ -552,11 +556,160 @@ static void check_path_async(uv_fs_t *fs_req) {
   free(fs_req);
 }
 
+static void on_soap_write(uv_write_t *req, int status)
+{
+  if (status < 0) {
+    fprintf(stderr, "Error on soap write: %s\n", uv_strerror(status));
+  }
+  client_t *client = (client_t *)req->data;
+  response_t *res = &client->response;
+  uv_buf_t *buf = (uv_buf_t *)res->buf;
+
+  fprintf(stdout, "SOAP response sent to client, nbuf = %d\n", req->nbufs);
+  for(int i = 0; i < req->nbufs; i++) {
+    free(buf[i].base);
+  }
+  free(res->buf);
+  free(req);
+}
+
+static void handle_soap_request(client_t *client) {
+  request_t *req = &client->request;
+  response_t *res = &client->response;
+
+  // Check if the request is a POST method
+  if (req->method != HTTP_POST) {
+    send_text_response(client, HTTP_STATUS_METHOD_NOT_ALLOWED,
+                       "Method Not Allowed");
+    return;
+  }
+
+  // Check if the request has a body
+  if (req->length_body == 0) {
+    send_text_response(client, HTTP_STATUS_BAD_REQUEST, "No SOAP body provided");
+    return;
+  }
+
+  // Check Content-Type from stored headers
+  // const char* content_type = NULL;
+  // for (size_t i = 0; i < client->request.num_headers; i++) {
+  //   if (strcasecmp(client->request.headers[i].field, "Content-Type") == 0) {
+  //     content_type = client->request.headers[i].value;
+  //     break;
+  //   }
+  // }
+
+  // if (content_type == NULL ||
+  //     (strstr(content_type, "application/soap+xml") == NULL &&
+  //      strstr(content_type, "text/xml") == NULL)) {
+  //   send_text_response(client, HTTP_STATUS_BAD_REQUEST, "Not a SOAP request");
+  //   return;
+  // }
+
+  // Parse XML body
+  xmlDoc *doc = xmlReadMemory(req->body, req->length_body, NULL, NULL, 0);
+  if (doc == NULL) {
+    send_text_response(client, HTTP_STATUS_BAD_REQUEST, "Invalid SOAP XML");
+    return;
+  }
+
+  xmlNode *root = xmlDocGetRootElement(doc);
+  if (root == NULL || xmlStrcmp(root->name, (xmlChar *)"Envelope") != 0) {
+    xmlFreeDoc(doc);
+    send_text_response(client, HTTP_STATUS_BAD_REQUEST, "Invalid SOAP Envelope");
+    return;
+  }
+
+  // Find SOAP Body
+  xmlNode *body = NULL;
+  for (xmlNode *node = root->children; node; node = node->next) {
+    if (node->type == XML_ELEMENT_NODE &&
+      xmlStrcmp(node->name, (xmlChar *)"Body") == 0) {
+      body = node;
+      break;
+    }
+  }
+
+  if (body == NULL) {
+    // xmlFreeDoc(doc);
+    send_text_response(client, HTTP_STATUS_BAD_REQUEST, "Missing SOAP Body");
+    return;
+  }
+
+  // Process SOAP operation
+  xmlNode *operation = body->children;
+  while (operation && operation->type != XML_ELEMENT_NODE) {
+    operation = operation->next;
+  }
+
+  if (operation == NULL) {
+    // xmlFreeDoc(doc);
+    send_text_response(client, HTTP_STATUS_BAD_REQUEST, "Missing SOAP Operation");
+    return;
+  }
+
+  // operation->name 就是 "GetCapabilities"
+  // operation->ns->prefix 可能是 "tds"
+  // operation->ns->href 可能是 "http://www.onvif.org/ver10/device/wsdl"
+  printf("SOAP Operation: %s\n", (char*)operation->name);
+  if (operation->ns && operation->ns->prefix) {
+    printf("Namespace prefix: %s\n", (char*)operation->ns->prefix);
+  }
+  if (operation->ns && operation->ns->href) {
+      printf("Namespace URI: %s\n", (char*)operation->ns->href);
+  }
+
+  if (xmlStrcmp(operation->ns->prefix, (xmlChar *)"tds") == 0 &&
+      xmlStrcmp(operation->ns->href, (xmlChar *)"http://www.onvif.org/ver10/device/wsdl") == 0) {
+      // This is a valid ONVIF operation, for tds namespace
+
+  }
+
+  // Create SOAP response
+  xmlDoc *response_doc = xmlNewDoc((xmlChar *)"1.0");
+  xmlNode *resp_root = xmlNewNode(NULL, (xmlChar *)"soap:Envelope");
+  xmlNewNs(resp_root, (xmlChar *)"http://schemas.xmlsoap.org/soap/envelope/", (xmlChar *)"soap");
+  xmlDocSetRootElement(response_doc, resp_root);
+
+  xmlNode *resp_body = xmlNewChild(resp_root, NULL, (xmlChar *)"soap:Body", NULL);
+  xmlNode *resp_op = xmlNewChild(resp_body, NULL,
+                 (xmlChar *)operation->name,
+                 (xmlChar *)"Operation processed");
+
+  xmlChar *response_str;
+  int response_size;
+  xmlDocDumpMemory(response_doc, &response_str, &response_size);
+
+  // Send SOAP response
+  res->mime_content = "application/soap+xml";
+  res->size_content = response_size;
+
+  res->buf = malloc(2 * sizeof(uv_buf_t));
+  ((uv_buf_t*)res->buf)[0] = make_response_header(HTTP_STATUS_OK, res);
+  ((uv_buf_t*)res->buf)[1] = uv_buf_init(strdup((char *)response_str), response_size);
+
+  uv_write_t *write_req = malloc(sizeof(uv_write_t));
+  write_req->data = (void *)client;
+  // write_req->nbufs = 2; // Two buffers: header and response body
+  uv_write(write_req, (uv_stream_t *)&client->handle, res->buf, 2, on_soap_write);
+
+  // Need to free these before returning
+  xmlFree(response_str);
+  // Cleanup
+  xmlFreeDoc(doc);
+  xmlFreeDoc(response_doc);
+}
+
 static void process_request(llhttp_t *parser, client_t *client) {
   request_t *req = &client->request;
   response_t *res = &client->response;
   fprintf(stdout, "Parse pass, type:%d, method:%d, url: %s\n", parser->type,
           parser->method, req->url);
+
+  if (strncmp(req->url, "/soap", 5) == 0) {
+    handle_soap_request(client);
+    return;
+  }
 
   char path[MAX_PATH_LENGTH];
 
@@ -658,14 +811,36 @@ int on_status(llhttp_t *parser, const char *at, size_t length) {
 // Callback to handle header field
 int on_header_field(llhttp_t *parser, const char *at, size_t length) {
   UNUSED(parser);
-  // printf("Header field: %.*s\n", (int)length, at);
+  printf("Header field: %.*s\n", (int)length, at);
+#if 0
+  client_t *client = (client_t *)parser->data;
+  // Allocate memory for the header field
+  char *field = strndup(at, length);
+  if (client->request.headers == NULL) {
+    client->request.headers = (header_t *)malloc(sizeof(header_t));
+    client->request.num_headers = 0;
+  } else {
+    client->request.headers =
+        (header_t *)realloc(client->request.headers,
+                            sizeof(header_t) * (client->request.num_headers + 1));
+  }
+  if (client->request.headers != NULL) {
+    header_t *header = &client->request.headers[client->request.num_headers++];
+    header->field = field;
+    header->value = NULL; // Initialize value to NULL
+  } else {
+    fprintf(stderr, "Memory allocation failed for header field\n");
+    free(field);
+    return HPE_CBOR_UNEXPECTED_ERROR; // Return an error code
+  }
+#endif
   return 0;
 }
 
 // Callback to handle header value
 int on_header_value(llhttp_t *parser, const char *at, size_t length) {
   UNUSED(parser);
-  // printf("Header value: %.*s\n", (int)length, at);
+  printf("Header value: %.*s\n", (int)length, at);
   return 0;
 }
 
