@@ -1,0 +1,17 @@
+libraries:
+  libuv:
+    version: 1.51.0
+    description: asynchronous I/O library
+    license: MIT
+  libxml2:
+    version: 2.14.5
+    description: XML parsing library
+    license: MIT
+  llhttp:
+    version: 9.3.0
+    description: HTTP library for C
+    license: MIT
+  nng:
+    version: 1.11.0
+    description: networking library
+    license: MIT
