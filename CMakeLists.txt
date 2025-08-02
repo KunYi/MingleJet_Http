@@ -42,6 +42,8 @@ INCLUDE_DIRECTORIES(
     ${INCLUDE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libuv/include
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/llhttp/include
+    # for xmlversion.h
+    ${CMAKE_BINARY_DIR}/thirdparty/libxml2
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libxml2/include
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/nng/include
 )

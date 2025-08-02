@@ -805,7 +805,10 @@ static void showLibrariesInfo(void) {
   fprintf(stdout, "  libuv:%d.%d.%d %s\n", UV_VERSION_MAJOR, UV_VERSION_MINOR,
           UV_VERSION_PATCH, UV_VERSION_IS_RELEASE ? "Release" : "Testing");
   fprintf(stdout, "  llhttp:%d.%d.%d\n", LLHTTP_VERSION_MAJOR,
-          LLHTTP_VERSION_MINOR, LLHTTP_VERSION_PATCH);
+         LLHTTP_VERSION_MINOR, LLHTTP_VERSION_PATCH);
+  fprintf(stdout, "  libxml2:%s\n", LIBXML_DOTTED_VERSION);
+  fprintf(stdout, "  nng:%d.%d.%d\n", NNG_MAJOR_VERSION,
+          NNG_MINOR_VERSION, NNG_PATCH_VERSION);
   fprintf(stdout, "  uthash:%s (for utlist/utarray)\n",
           STR_VERSION(UTLIST_VERSION));
 }

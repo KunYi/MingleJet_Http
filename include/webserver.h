@@ -5,6 +5,8 @@
 #include <utarray.h>
 #include <utlist.h>
 #include <uv.h>
+#include <libxml/xmlversion.h>
+#include <nng/nng.h>
 
 typedef struct route_s {
   char *static_url_path;
