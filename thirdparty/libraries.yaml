@@ -1,0 +1,12 @@
+libraries:
+  libuv:
+    version: 1.51.0
+    description: Asynchronous I/O library
+    license: MIT
+    url: https://libuv.org
+  llhttp:
+    version: 9.3.0
+    description: HTTP Parser library for C
+    license: MIT
+    url: https://llhttp.org
+
