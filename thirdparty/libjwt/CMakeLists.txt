@@ -7,7 +7,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 cmake_minimum_required (VERSION 3.7...3.15)
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(LibJWTVersions)
 include(GenerateExportHeader)
@@ -80,13 +80,13 @@ endif()
 
 add_custom_command(
 	OUTPUT jwt-builder.i
-	COMMAND ${CMAKE_C_COMPILER} -E ${CMAKE_SOURCE_DIR}/libjwt/jwt-common.c -DJWT_BUILDER
+	COMMAND ${CMAKE_C_COMPILER} -E ${CMAKE_CURRENT_SOURCE_DIR}/libjwt/jwt-common.c -DJWT_BUILDER
 		-o jwt-builder.i
 	DEPENDS libjwt/jwt-common.c)
 
 add_custom_command(
 	OUTPUT jwt-checker.i
-	COMMAND ${CMAKE_C_COMPILER} -E ${CMAKE_SOURCE_DIR}/libjwt/jwt-common.c -DJWT_CHECKER
+	COMMAND ${CMAKE_C_COMPILER} -E ${CMAKE_CURRENT_SOURCE_DIR}/libjwt/jwt-common.c -DJWT_CHECKER
 		-o jwt-checker.i
 	DEPENDS libjwt/jwt-common.c)
 
@@ -117,8 +117,8 @@ endif()
 
 generate_export_header(jwt ${NO_BUILD_DEPRECATED})
 
-include_directories(${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}
-		    ${CMAKE_SOURCE_DIR}/libjwt)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_BINARY_DIR}
+		    ${CMAKE_CURRENT_SOURCE_DIR}/libjwt)
 
 target_link_libraries(jwt PUBLIC PkgConfig::JANSSON)
 target_link_libraries(jwt_static PUBLIC PkgConfig::JANSSON)
@@ -169,7 +169,7 @@ function(jwt_add_tool)
 	# target_link_libraries(${Tool_NAME} PRIVATE jwt)
 	set_target_properties(${Tool_NAME} PROPERTIES
 		RUNTIME_OUTPUT_DIRECTORY
-		"${CMAKE_BINARY_DIR}/tools"
+		"${CMAKE_CURRENT_BINARY_DIR}/tools"
 		COMPILE_FLAGS -DJWT_STATIC_DEFINE)
 	install(TARGETS ${Tool_NAME}
 		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -193,7 +193,7 @@ target_sources(jwt PRIVATE ${JWT_SOURCES})
 target_sources(jwt_static PRIVATE ${JWT_SOURCES})
 
 target_include_directories(jwt PUBLIC
-	$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 	$<INSTALL_INTERFACE:include>
 )
 
@@ -203,7 +203,7 @@ set_target_properties(jwt PROPERTIES
 	SOVERSION ${LIBJWT_COMPATVERSION}
 )
 
-add_definitions(-D_GNU_SOURCE -DKEYDIR=\"${CMAKE_SOURCE_DIR}/tests/keys\")
+add_definitions(-D_GNU_SOURCE -DKEYDIR=\"${CMAKE_CURRENT_SOURCE_DIR}/tests/keys\")
 
 # Install header
 install(FILES include/jwt.h
@@ -248,7 +248,7 @@ install(FILES ${CMAKE_BINARY_DIR}/libjwt.pc
 find_package(Doxygen 1.9.8)
 
 if (DOXYGEN_FOUND)
-	set(DOXYGEN_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/doxygen-doc)
+	set(DOXYGEN_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/doxygen-doc)
 	include(LibJWTDoxyfile)
 	doxygen_add_docs(doxygen-doc ALL include/jwt.h)
 
@@ -257,7 +257,7 @@ if (DOXYGEN_FOUND)
 		FILES_MATCHING PATTERN "man3/JW*.3"
 		PATTERN "man3/jw*.3")
 
-	install(DIRECTORY ${CMAKE_SOURCE_DIR}/tools/
+	install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tools/
 		DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
 		FILES_MATCHING PATTERN "*.1")
 
@@ -292,7 +292,7 @@ function(jwt_add_test)
 
 	target_link_libraries(${LibTest_NAME} PRIVATE PkgConfig::CHECK)
 	add_test(NAME ${LibTest_NAME} COMMAND /bin/bash -c
-		"export TEST=${LibTest_NAME}; . ${CMAKE_SOURCE_DIR}/tests/test-env.sh; exec ${CMAKE_BINARY_DIR}/tests/${LibTest_NAME}")
+		"export TEST=${LibTest_NAME}; . ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-env.sh; exec ${CMAKE_CURRENT_BINARY_DIR}/tests/${LibTest_NAME}")
 endfunction()
 
 if (CHECK_FOUND)
@@ -316,7 +316,7 @@ if (CHECK_FOUND)
 
 	if (BATS_CMD)
 		add_test(NAME jwt_cli COMMAND /bin/bash -c
-			"export SRCDIR=\"${CMAKE_SOURCE_DIR}\"; \"${CMAKE_SOURCE_DIR}\"/tests/jwt-cli.bats")
+			"export SRCDIR=\"${CMAKE_CURRENT_SOURCE_DIR}\"; \"${CMAKE_CURRENT_SOURCE_DIR}\"/tests/jwt-cli.bats")
 	endif()
 
 	add_custom_target(check
@@ -328,7 +328,7 @@ if (CHECK_FOUND)
 		include(CodeCoverage)
 		append_coverage_compiler_flags()
 
-		set(COVERAGE_LCOV_INCLUDES "${CMAKE_SOURCE_DIR}/libjwt/")
+		set(COVERAGE_LCOV_INCLUDES "${CMAKE_CURRENT_SOURCE_DIR}/libjwt/")
 		setup_target_for_coverage_lcov(
 			NAME check-code-coverage
 			OUTPUT "${PROJECT_NAME}-${PROJECT_VERSION}-coverage"
@@ -347,5 +347,5 @@ if (NOT ENABLE_COVERAGE)
 		VERBATIM)
 endif()
 
-set(CPACK_PROPERTIES_FILE "${CMAKE_SOURCE_DIR}/cmake/CPackConfig.cmake")
+set(CPACK_PROPERTIES_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CPackConfig.cmake")
 include(CPack)

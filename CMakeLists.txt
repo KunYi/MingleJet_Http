@@ -26,12 +26,15 @@ set(NNG_TOOLS OFF CACHE BOOL "Build extra tools" FORCE)
 set(NNG_ENABLE_NNGCAT OFF CACHE BOOL "Enable building nngcat utility" FORCE)
 set(NNG_ENABLE_COVERAGE OFF CACHE BOOL "Enable coverage reporting" FORCE)
 set(NNG_ENABLE_HTTP OFF CACHE BOOL "Enable HTTP API." FORCE)
+set(WITH_TESTS OFF CACHE BOOL "Build tests" FORCE)
 
 # Add subdirectories for third-party libraries
 add_subdirectory(thirdparty/libuv)
 add_subdirectory(thirdparty/llhttp)
 add_subdirectory(thirdparty/libxml2)
 add_subdirectory(thirdparty/nng)
+add_subdirectory(thirdparty/jansson)
+add_subdirectory(thirdparty/libjwt)
 
 PROJECT(MingleJet VERSION 0.0.1)
 
@@ -46,6 +49,9 @@ INCLUDE_DIRECTORIES(
     ${CMAKE_BINARY_DIR}/thirdparty/libxml2
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libxml2/include
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/nng/include
+    ${CMAKE_BINARY_DIR}/thirdparty/jansson/include
+    ${CMAKE_BINARY_DIR}/thirdparty/libjwt
+    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libjwt/include
 )
 
 FILE(GLOB SOURCES "${SOURCE_DIR}/*.c")

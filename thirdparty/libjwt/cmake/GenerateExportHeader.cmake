@@ -453,7 +453,7 @@ macro(_DO_GENERATE_EXPORT_HEADER TARGET_LIBRARY)
     endif()
   endif()
 
-  configure_file("${CMAKE_SOURCE_DIR}/include/jwt_export.h.in"
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/include/jwt_export.h.in"
     "${EXPORT_FILE_NAME}" @ONLY)
 endmacro()
 
