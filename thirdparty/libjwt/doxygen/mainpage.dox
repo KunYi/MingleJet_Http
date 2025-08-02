@@ -1,0 +1,80 @@
+@mainpage Welcome to LibJWT
+
+> [!WARNING]
+> Version 3 of LibJWT is a complete overhaul of the code. Please see documentation for usage.
+
+@section standards \emoji :bulb: Supported Standards
+
+Standard | RFC        | Description
+-------- | :--------: | ----------------------
+``JWS``  | @rfc{7515} | JSON Web Signature
+``JWE``  | @rfc{7516} | JSON Web Encryption
+``JWK``  | @rfc{7517} | JSON Web Keys and Sets
+``JWA``  | @rfc{7518} | JSON Web Algorithms
+``JWT``  | @rfc{7519} | JSON Web Token
+
+> [!NOTE]
+> Throughout this documentation you will see links such as the ones
+> above to RFC documents. These are relevant to that particular part of the
+> library and are helpful to understand some of the specific standards that
+> shaped the development of LibJWT.
+
+@section building \emoji :construction: Build Prerequisites
+
+@subsection req Required
+
+- [JANSSON](https://github.com/akheron/jansson) (>= 2.0)
+- [CMake](https://cmake.org) (>= 3.7)
+
+@subsection req_crypto Crypto support
+
+- OpenSSL (>= 3.0.0)
+- GnuTLS (>= 3.6.0)
+- MbedTLS (>= 3.6.0)
+
+@note OpenSSL is required and used for JWK(S) operations.
+
+@subsection crypto_support Algorithm support matrix
+
+JWS Algorithm ``alg``         | OpenSSL                   | GnuTLS                    | MbedTLS
+:---------------------------- | :------------------------ | :------------------------ | :------------------------
+``HS256`` ``HS384`` ``HS512`` | \emoji :white_check_mark: | \emoji :white_check_mark: | \emoji :white_check_mark:
+``ES256`` ``ES384`` ``ES512`` | \emoji :white_check_mark: | \emoji :white_check_mark: | \emoji :white_check_mark:
+``RS256`` ``RS384`` ``RS512`` | \emoji :white_check_mark: | \emoji :white_check_mark: | \emoji :white_check_mark:
+``EdDSA`` using ``ED25519``   | \emoji :white_check_mark: | \emoji :white_check_mark: | \emoji :x:
+``EdDSA`` using ``ED448``     | \emoji :white_check_mark: | \emoji :white_check_mark: ``>= 3.8.8`` | \emoji :x:
+``PS256`` ``PS384`` ``PS512`` | \emoji :white_check_mark: | \emoji :white_check_mark: | \emoji :white_check_mark:*
+``ES256K``                    | \emoji :white_check_mark: | \emoji :x:                | \emoji :white_check_mark:
+
+``*`` RSASSA-PSS support in MbedTLS depends on [TF-PSA-Ctypto#154](https://github.com/Mbed-TLS/TF-PSA-Crypto/pull/154)
+
+@subsection optional Optional
+
+- [Check Library](https://github.com/libcheck/check/issues) (>= 0.9.10) for unit
+  testing
+- [Doxygen](https://www.doxygen.nl) (>= 1.13.0) for documentation
+
+@section docs \emoji :open_book: Docs and Source
+
+\emoji :link: [Current Docs](https://libjwt.io)
+
+\emoji :link: [Legacy Docs v2.1.1](https://libjwt.io/stable)
+
+\emoji :link: [GitHub Repo](https://github.com/benmcollins/libjwt)
+
+@section prebuilt \emoji :package: Pre-built Packages
+
+LibJWT is available in most Linux distributions as well as through
+[Homebrew](https://formulae.brew.sh/formula/libjwt#default)
+for Linux, macOS, and Windows.
+
+@section instructions \emoji :hammer: Build Instructions
+
+@subsection cmake With CMake:
+
+@code{.sh}
+$ mkdir build
+$ cd build
+$ cmake ..
+$ make
+@endcode

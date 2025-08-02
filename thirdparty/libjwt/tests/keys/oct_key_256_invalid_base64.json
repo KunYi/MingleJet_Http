@@ -1,0 +1,13 @@
+{
+  "keys": [
+    {
+      "key_ops": [
+        "sign"
+      ],
+      "kid": "test:invalid-base64",
+      "kty": "oct",
+      "k": "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5WFk",
+      "alg": "HS256"
+    }
+  ]
+}
