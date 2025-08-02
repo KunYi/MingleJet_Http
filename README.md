@@ -1,7 +1,7 @@
 MingleJet Http Server
 ===
 
-MingleJet is a simple HTTP server that utilizes libuv, llhttp, and utlist.
+MingleJet is a simple HTTP server that utilizes libuv, llhttp, libxml2, nng, and utlist.
 
 ### BUILD
 ```
@@ -21,8 +21,10 @@ The expected output is as follows:
 Launch MingleJet...
 
 use the below third party components
-  libuv:1.48.1 Release
-  llhttp:9.2.0
+  libuv:1.51.0 Release
+  llhttp:9.3.0
+  libxml2:2.14.5
+  nng:1.11.0
   uthash:2.3.0 (for utlist/utarray)
 
 Server listening on port 8080...
@@ -57,6 +59,8 @@ For more detailed information, refer to [valgrind thinks statbuf is uninitialise
 ### Third-Party Components
 * [libuv](https://github.com/libuv/libuv)
 * [llhttp](https://github.com/nodejs/llhttp)
+* [libxml2](https://gitlab.gnome.org/GNOME/libxml2)
+* [nng](https://github.com/nanomsg/nng)
 * [uthash](https://github.com/troydhanson/uthash)
 
 
