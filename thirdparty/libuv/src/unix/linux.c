@@ -2351,7 +2351,11 @@ static int uv__get_cgroupv2_constrained_cpu(const char* cgroup,
    *   - /sys/fs/cgroup/cpu.max
    */
   while (strncmp(path, cgroup_mount, strlen(cgroup_mount)) == 0) {
-    snprintf(full_path, sizeof(full_path), "%s/cpu.max", path);
+    int ret = snprintf(full_path, sizeof(full_path), "%s/cpu.max", path);
+    if (ret < 0 || (size_t)ret >= sizeof(full_path)) {
+      /* Path too long, skip this level */
+      goto next;
+    }
 
     /* Silently ignore and continue if the file does not exist */
     if (uv__slurp(full_path, quota_buf, sizeof(quota_buf)) < 0)
