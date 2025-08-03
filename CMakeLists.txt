@@ -22,9 +22,15 @@ set(LIBUV_BUILD_TESTS OFF CACHE BOOL "Disable libuv tests" FORCE)
 set(LIBUV_BUILD_BENCHMARKS OFF CACHE BOOL "Disable libuv benchmarks" FORCE)
 set(LIBUV_BUILD_DOCS OFF CACHE BOOL "Disable libuv documentation" FORCE)
 
+set(LIBXML2_WITH_PYTHON OFF CACHE BOOL "Build Python bindings" FORCE)
+set(LIBXML2_WITH_TESTS OFF CACHE BOOL "Build tests" FORCE)
+set(LIBXML2_WITH_DEBUG OFF CACHE BOOL "Build tests" FORCE)
+
+
 # Add subdirectories for third-party libraries
 add_subdirectory(thirdparty/libuv)
 add_subdirectory(thirdparty/llhttp)
+add_subdirectory(thirdparty/libxml2)
 
 PROJECT(MingleJet VERSION 0.0.1)
 
@@ -35,13 +41,15 @@ INCLUDE_DIRECTORIES(
     ${INCLUDE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libuv/include
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/llhttp/include
+    ${CMAKE_BINARY_DIR}/thirdparty/libxml2
+    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libxml2/include
 )
 
 FILE(GLOB SOURCES "${SOURCE_DIR}/*.c")
 
 ADD_EXECUTABLE(${PROJECT_NAME} ${SOURCES})
 
-TARGET_LINK_LIBRARIES(${PROJECT_NAME} uv_a llhttp_static)
+TARGET_LINK_LIBRARIES(${PROJECT_NAME} uv_a llhttp_static xml2)
 
 ADD_CUSTOM_TARGET(memchk
     COMMAND ${CMAKE_COMMAND} -E echo "Running Valgrind..."

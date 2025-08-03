@@ -4,9 +4,15 @@ libraries:
     description: Asynchronous I/O library
     license: MIT
     url: https://libuv.org
+  libxml2:
+    version: 2.14.5
+    description: XML parsing library
+    license: MIT
+    url: http://xmlsoft.org
   llhttp:
     version: 9.3.0
     description: HTTP Parser library for C
     license: MIT
     url: https://llhttp.org
+
 
