@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 /* include libuv & llhttp */
+#include "default_response.h"
 #include "defineds.h"
 #include "utils.h"
 #include "webserver.h"
@@ -16,34 +17,6 @@ static void get_param_cleanup(get_param_t *param) {
 
 static UT_icd get_params_icd = {sizeof(get_param_t), NULL, NULL,
                                 (void (*)(void *))get_param_cleanup};
-
-static const char *res404content = "<!DOCTYPE html>"
-                                   "<html>"
-                                   "<header>"
-                                   "<title>MingleJet</title>"
-                                   "</header>"
-                                   "<body>"
-                                   "<H1>Not Found</H1>"
-                                   "</body>"
-                                   "</html>";
-
-static const char *res500content =
-    "<!DOCTYPE html>"
-    "<html>"
-    "<header>"
-    "<title>MingleJet</title>"
-    "</header>"
-    "<body>"
-    "<h1>500 Internal Server Error</h1>"
-    "<p>An unexpected error occurred while processing your request.</p>"
-    "<p>Please try again later.</p>"
-    "</body>"
-    "</html>";
-
-static const char *response401 = "HTTP/1.1 401 Unauthorized\r\n"
-                                 "Location: %s\r\n"
-                                 "Content-Length: 0\r\n"
-                                 "\r\n";
 
 static mime_type_pair_t mime_types[] = {
     {".html", "text/html"},
@@ -456,7 +429,7 @@ static void check_default_files_async(uv_fs_t *fs_req) {
     // fprintf(stdout, "Can't find file: %s\n", fs_req->path);
     req->default_filename_tries++;
     if (req->default_filename_tries >= web_config->def_cnt) {
-      send_html_response(client, HTTP_STATUS_NOT_FOUND, res404content);
+      send_html_response(client, HTTP_STATUS_NOT_FOUND, getResponse404Content());
       uv_fs_req_cleanup(fs_req);
       free(fs_req);
       return;
@@ -476,7 +449,7 @@ static void check_default_files_async(uv_fs_t *fs_req) {
 
     if (res->length_path >= MAX_PATH_LENGTH) {
       send_html_response(client, HTTP_STATUS_INTERNAL_SERVER_ERROR,
-                         res500content);
+                         getResponse500Content());
       uv_fs_req_cleanup(fs_req);
       free(fs_req);
       return;
@@ -510,7 +483,7 @@ static void check_path_async(uv_fs_t *fs_req) {
 
   if (fs_req->result < 0) {
     fprintf(stdout, "check fs_stat failed\n");
-    send_html_response(client, HTTP_STATUS_NOT_FOUND, res404content);
+    send_html_response(client, HTTP_STATUS_NOT_FOUND, getResponse404Content());
     uv_fs_req_cleanup(fs_req);
     free(fs_req);
     return;
@@ -564,7 +537,7 @@ static void process_request(llhttp_t *parser, client_t *client) {
       snprintf(path, MAX_PATH_LENGTH, "%s%s", web_config->www_root, req->url);
   if (res->length_path >= MAX_PATH_LENGTH) {
     send_html_response(client, HTTP_STATUS_INTERNAL_SERVER_ERROR,
-                       res500content);
+                       getResponse500Content());
     return;
   }
 
