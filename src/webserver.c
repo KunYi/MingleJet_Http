@@ -8,6 +8,7 @@
 #include "client_manager.h"
 #include "default_response.h"
 #include "defineds.h"
+#include "file_handle.h"
 #include "utils.h"
 #include "webserver.h"
 
@@ -627,6 +628,8 @@ int webserver(uv_loop_t *ev_loop, webconfig_t *config) {
     // Use default configuration
     // (optional: set default configuration)
   }
+
+  file_handle_init(loop, web_config);
 
   // Initialize signal handlers
   uv_signal_init(loop, &sigint_handle);
