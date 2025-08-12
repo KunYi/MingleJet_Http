@@ -11,7 +11,7 @@
  * @param loop The active libuv event loop.
  * @param config A pointer to the web server's configuration structure.
  */
-void file_handle_init(const uv_loop_t *loop, const webconfig_t *config);
+void file_handle_init(uv_loop_t *loop, const webconfig_t *config);
 
 /**
  * @brief Handles an incoming file request.

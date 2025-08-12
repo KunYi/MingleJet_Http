@@ -103,6 +103,7 @@ void cleanup_resources(void) {
     free_client(elt);
   }
 }
+
 void client_handle_request(client_t *client, const char *data, size_t len) {
     http_parser_t *parser = client->parser;
     if (http_parser_execute(parser, data, len) == HPE_OK) {

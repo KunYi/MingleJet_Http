@@ -19,11 +19,6 @@ typedef struct webconfig_s {
 struct client_s;
 typedef struct client_s client_t;
 
-typedef struct mime_type_pair_s {
-  const char *ext;
-  const char *content_type;
-} mime_type_pair_t;
-
 typedef uint32_t statuscode_t;
 typedef struct {
   statuscode_t code;

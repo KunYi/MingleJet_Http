@@ -9,160 +9,13 @@
 #include "default_response.h"
 #include "defineds.h"
 #include "file_handle.h"
+#include "router.h"
 #include "utils.h"
 #include "webserver.h"
 
-
-
-static mime_type_pair_t mime_types[] = {
-    {".html", "text/html"},
-    {".htm", "text/html"},
-    {".css", "text/css"},
-    {".js", "text/javascript"},
-    {".mjs", "text/javascript"},
-    {".json", "application/json"},
-    {".txt", "text/plain"},
-    {".png", "image/png"},
-    {".svg", "image/svg+xml"},
-    {".jpg", "image/jpeg"},
-    {".jpeg", "image/jpeg"},
-    {".gif", "image/gif"},
-    {".ico", "image/x-icon"},
-    {".ttf", "font/ttf"},
-    {".woff", "font/woff"},
-    {".woff2", "font/woff2"},
-    {".pdf", "application/pdf"},
-    {".mp3", "audio/mpeg"},
-    {".ogg", "audio/ogg"},
-    {".wav", "audio/wav"},
-    // { ".mp4", "video/mp4" },
-    // { ".mov", "video/quicktime" },
-    // { ".avi", "video/x-msvideo" },
-    {".zip", "application/zip"},
-    {".gz", "application/gzip"},
-    {".rar", "application/vnd.rar"},
-    // { ".doc", "application/msword" },
-    // { ".docx",
-    // "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    // }, { ".xlsx",
-    // "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }, {
-    // ".pptx",
-    // "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    // }, { ".eml", "message/rfc822" },
-    {".bmp", "image/bmp"},
-    {".tiff", "image/tiff"},
-    {".XXXYYY", "application/octet-stream"},
-};
-
-/* http status codes */
-static const http_status_code_t status1xx_codes[] = {
-    // Informational responses
-    {100, "Continue"},
-    {101, "Switching Protocols"},
-    {102, "Processing"},
-    {103, "Early Hints"},
-};
-static const int num_status1xx_codes =
-    sizeof(status1xx_codes) / sizeof(http_status_code_t);
-
-static const http_status_code_t status2xx_codes[] = {
-    // Successful responses
-    {200, "OK"},
-    {201, "Created"},
-    {202, "Accepted"},
-    {203, "Non-Authoritative Information"},
-    {204, "No Content"},
-    {205, "Reset Content"},
-    {206, "Partial Content"},
-    {207, "Multi-Status (WebDAV)"},
-    {208, "Already Reported (WebDAV)"},
-    {226, "IM Used"},
-};
-static const int num_status2xx_codes =
-    sizeof(status2xx_codes) / sizeof(http_status_code_t);
-
-static const http_status_code_t status3xx_codes[] = {
-    // Redirection messages
-    {300, "Multiple Choices"},
-    {301, "Moved Permanently"},
-    {302, "Found"},
-    {303, "See Other"},
-    {304, "Not Modified"},
-    {305, "Use Proxy"},
-    {306, "(Unused)"},
-    {307, "Temporary Redirect"},
-    {308, "Permanent Redirect"},
-};
-static const int num_status3xx_codes =
-    sizeof(status3xx_codes) / sizeof(http_status_code_t);
-
-static const http_status_code_t status4xx_codes[] = {
-    // Client error responses
-    {400, "Bad Request"},
-    {401, "Unauthorized"},
-    {402, "Payment Required"},
-    {403, "Forbidden"},
-    {404, "Not Found"},
-    {405, "Method Not Allowed"},
-    {406, "Not Acceptable"},
-    {407, "Proxy Authentication Required"},
-    {408, "Request Timeout"},
-    {409, "Conflict"},
-    {410, "Gone"},
-    {411, "Length Required"},
-    {412, "Precondition Failed"},
-    {413, "Payload Too Large"},
-    {414, "URI Too Long"},
-    {415, "Unsupported Media Type"},
-    {416, "Range Not Satisfiable"},
-    {417, "Expectation Failed"},
-    {418, "I'm a teapot"},
-    {419, "Authentication Timeout"},
-    {421, "Misdirected Request"},
-    {422, "Unprocessable Entity"},
-    {423, "Locked"},
-    {424, "Failed Dependency"},
-    {425, "Unordered Collection"},
-    {426, "Upgrade Required"},
-    {428, "Precondition Required"},
-    {429, "Too Many Requests"},
-    {431, "Request Header Fields Too Large"},
-    {440, "Login Timeout"},
-    {444, "No Response"},
-    {450, "Blocked by Windows Parental Controls"},
-    {451, "Unavailable For Legal Reasons"},
-    {452, "Request Header Fields Too Large"},
-    {494, "Request Header Timeout"},
-    {495, "Cert Error"},
-    {496, "Client Closed Request"},
-    {497, "HTTP Request Sent To HTTPS Port"},
-    {499, "Client Closed Request"},
-};
-static const int num_status4xx_codes =
-    sizeof(status4xx_codes) / sizeof(http_status_code_t);
-
-static const http_status_code_t status5xx_codes[] = {
-    // Server error responses
-    {500, "Internal Server Error"},
-    {501, "Not Implemented"},
-    {502, "Bad Gateway"},
-    {503, "Service Unavailable"},
-    {504, "Gateway Timeout"},
-    {505, "HTTP Version Not Supported"},
-    {506, "Variant Also Negotiates"},
-    {507, "Insufficient Storag"},
-    {508, "Loop Detected"},
-    {510, "Not Extended"},
-    {511, "Network Authentication Required"}};
-static const int num_status5xx_codes =
-    sizeof(status5xx_codes) / sizeof(http_status_code_t);
-
-static webconfig_t *web_config;
 static uv_loop_t *loop;
 static uv_signal_t sigint_handle, sigterm_handle;
 static uv_timer_t release_timer;
-
-static void on_write(uv_write_t *req, int status);
 
 // static void setup_cleanup_timer(uv_loop_t *loop) {
 //   // Release resource1 after 200ms
@@ -172,339 +25,6 @@ static void on_write(uv_write_t *req, int status);
 
 /* -------------------------------------------------------------------------------------------
  */
-
-static const char *match_mime_type(const char *path) {
-  const char *ext = strrchr(path, '.');
-  if (!ext) {
-    // Handle unknown extension cases (set default or error)
-    return "application/octet-stream";
-  }
-
-  const char *content_type = "application/octet-stream";
-
-  for (size_t i = 0; i < sizeof(mime_types) / sizeof(mime_types[0]); i++) {
-    if (strcasecmp(ext, mime_types[i].ext) == 0) {
-      content_type = mime_types[i].content_type;
-      break;
-    }
-  }
-  return content_type;
-}
-
-static const char *status_string(llhttp_status_t status) {
-  const http_status_code_t *p = NULL;
-  int max_statuscode = 0;
-
-  if ((status >= 100) && (status < 200)) {
-    p = &status1xx_codes[0];
-    max_statuscode = num_status1xx_codes;
-  } else if ((status >= 200) && (status < 300)) {
-    p = &status2xx_codes[0];
-    max_statuscode = num_status2xx_codes;
-  } else if ((status >= 300) && (status < 400)) {
-    p = &status3xx_codes[0];
-    max_statuscode = num_status3xx_codes;
-  } else if ((status >= 400) && (status < 500)) {
-    p = &status4xx_codes[0];
-    max_statuscode = num_status4xx_codes;
-  } else if ((status >= 500) && (status < 600)) {
-    p = &status5xx_codes[0];
-    max_statuscode = num_status5xx_codes;
-  } else {
-    return "Unknow Status";
-  }
-
-  for (int i = 0; i < max_statuscode; i++) {
-    if (status == p[i].code)
-      return p[i].reason_phrase;
-  }
-  return "Unknow Status";
-}
-
-static const int make_header_status(llhttp_status_t status, char *buf,
-                                    uint32_t len) {
-  return snprintf(buf, len, "HTTP/1.1 %d %s\r\n", status,
-                  status_string(status));
-}
-
-static const int make_header_content_type(const char *content_type, char *buf,
-                                          uint32_t len) {
-  return snprintf(buf, len, "Content-Type: %s\r\n", content_type);
-}
-
-static const int make_header_content_length(size_t content_length, char *buf,
-                                            uint32_t len) {
-  return snprintf(buf, len, "Content-Length: %ld\r\n", content_length);
-}
-
-static uv_buf_t make_response_header(llhttp_status_t status, response_t *res) {
-  if (res == NULL) {
-    return uv_buf_init(NULL, 0);
-  }
-
-  char buf[2048];
-  char *ret = buf;
-  int len = sizeof(buf);
-  int cnt = 0;
-
-  if (ret != NULL) {
-    cnt = make_header_status(status, ret, len);
-    len -= cnt;
-    if (res->mime_content != NULL) {
-      cnt += make_header_content_type(res->mime_content, ret + cnt, len);
-      len -= cnt;
-    }
-    // always include 'Content-Length' field, even the value is zero
-    cnt += make_header_content_length(res->size_content, ret + cnt, len);
-    len -= cnt;
-    cnt += snprintf(ret + cnt, len, "\r\n");
-  }
-
-  uv_buf_t uv_buf = uv_buf_init(malloc(cnt), cnt);
-  strncpy(uv_buf.base, buf, cnt);
-  return uv_buf;
-}
-
-static void on_final_fix_response(uv_write_t *req, int status) {
-  if (status == 0) {
-    assert(req->nbufs == 2);
-    client_t *client = (client_t *)req->data;
-    free(client->response.buf[0].base);
-
-    // the content for pre-defined fixed address
-    // not in heap/malloc
-    // free(client->response.buf[1].base);
-    free(client->response.buf);
-    client->response.buf = NULL;
-  }
-  free(req);
-}
-
-static void make_fixed_response(client_t *client, const llhttp_status_t code,
-                                const char *mime_type, const char *content) {
-  response_t *res = &client->response;
-  const size_t len = strlen(content);
-
-  res->buf = malloc(2 * sizeof(uv_buf_t));
-  res->mime_content = mime_type;
-  res->size_content = len;
-  res->buf[0] = make_response_header(code, res);
-  res->buf[1] = uv_buf_init((char *)content, len);
-
-  // send response
-  uv_write_t *write_req = malloc(sizeof(uv_write_t));
-  write_req->data = (void *)client;
-  uv_write(write_req, (uv_stream_t *)&client->handle, res->buf, 2,
-           on_final_fix_response);
-}
-
-static void send_text_response(client_t *client, const llhttp_status_t code,
-                               const char *content) {
-  make_fixed_response(client, code, match_mime_type(".txt"), content);
-}
-
-static void send_html_response(client_t *client, const llhttp_status_t code,
-                               const char *content) {
-  make_fixed_response(client, code, match_mime_type(".html"), content);
-}
-
-static void on_close_sendfile(uv_fs_t *fs_req) {
-  uv_fs_req_cleanup(fs_req);
-  free(fs_req);
-}
-
-static void final_sendfile(uv_fs_t *fs_req) {
-  client_t *client = (client_t *)fs_req->data;
-  const response_t *res = &client->response;
-
-  uv_fs_t *req_close = (uv_fs_t *)malloc(sizeof(uv_fs_t));
-  uv_fs_close(loop, req_close, res->open_file, on_close_sendfile);
-  uv_fs_req_cleanup(fs_req);
-  free(fs_req);
-  client_clear_in_ref(client);
-}
-
-static void send_file_context(uv_fs_t *fs_req) {
-  client_t *client = (client_t *)fs_req->data;
-  response_t *res = &client->response;
-
-  // FIXME: only for linux
-  if (fs_req->result >= 0) {
-    uv_os_fd_t sendfd;
-    uv_fs_t *send_req = (uv_fs_t *)malloc(sizeof(uv_fs_t));
-    send_req->data = client;
-    uv_fileno((uv_handle_t *)&client->handle, &sendfd);
-    client_set_in_ref(client);
-    res->open_file = fs_req->result; // store the file handler
-    uv_fs_sendfile(loop, send_req, sendfd, fs_req->result, 0, res->size_content,
-                   final_sendfile);
-#ifdef _WIN32
-#error "because windows not support sendfile(), need implement"
-#endif
-  }
-
-  // release path
-  free(res->path_content);
-  res->path_content = NULL;
-
-  uv_fs_req_cleanup(fs_req);
-  free(fs_req);
-}
-
-static void open_send_file(uv_write_t *req, int status) {
-  client_t *client = (client_t *)req->data;
-  response_t *res = &client->response;
-  if (status == 0) {
-    uv_fs_t *fs_req = malloc(sizeof(uv_fs_t));
-    fs_req->data = client;
-    uv_fs_open(loop, fs_req, res->path_content, O_RDONLY, (S_IRUSR | S_IRGRP),
-               send_file_context);
-  }
-
-  free(res->buf->base);
-  free(res->buf);
-  free(req);
-}
-
-static void found_and_sendfs_req(client_t *client) {
-  response_t *res = &client->response;
-  res->buf = malloc(sizeof(uv_buf_t));
-  *res->buf = make_response_header(HTTP_STATUS_OK, res);
-  // send header of response;
-  uv_write_t *write_req = malloc(sizeof(uv_write_t));
-  write_req->data = (void *)client;
-  uv_write(write_req, (uv_stream_t *)&client->handle, res->buf, 1,
-           open_send_file);
-}
-
-static void check_default_files_async(uv_fs_t *fs_req) {
-  client_t *client = (client_t *)fs_req->data;
-  request_t *req = &client->request;
-  response_t *res = &client->response;
-
-  if (fs_req->result != 0) {
-    // fprintf(stdout, "Can't find file: %s\n", fs_req->path);
-    req->default_filename_tries++;
-    if (req->default_filename_tries >= web_config->def_cnt) {
-      send_html_response(client, HTTP_STATUS_NOT_FOUND, getResponse404Content());
-      uv_fs_req_cleanup(fs_req);
-      free(fs_req);
-      return;
-    }
-
-    char path[MAX_PATH_LENGTH];
-    const int len = strlen(req->url);
-    if (len > 1 && req->url[len - 1] != '/') {
-      res->length_path =
-          snprintf(path, MAX_PATH_LENGTH, "%s%s/%s", web_config->www_root,
-                   req->url, web_config->defaults[req->default_filename_tries]);
-    } else {
-      res->length_path =
-          snprintf(path, MAX_PATH_LENGTH, "%s%s%s", web_config->www_root,
-                   req->url, web_config->defaults[req->default_filename_tries]);
-    }
-
-    if (res->length_path >= MAX_PATH_LENGTH) {
-      send_html_response(client, HTTP_STATUS_INTERNAL_SERVER_ERROR,
-                         getResponse500Content());
-      uv_fs_req_cleanup(fs_req);
-      free(fs_req);
-      return;
-    }
-
-    // next default req
-    fprintf(stdout, "try next default file:%s\n", path);
-    uv_fs_t *new_req = malloc(sizeof(uv_fs_t));
-    new_req->data = client;
-    uv_fs_stat(loop, new_req, path, check_default_files_async);
-
-    uv_fs_req_cleanup(fs_req);
-    free(fs_req);
-    return;
-  }
-
-  // find file will send the file to user
-  res->size_content = fs_req->statbuf.st_size;
-  res->path_content = strdup(fs_req->path);
-  res->mime_content = match_mime_type(fs_req->path);
-  found_and_sendfs_req(client);
-
-  uv_fs_req_cleanup(fs_req);
-  free(fs_req);
-}
-
-static void check_path_async(uv_fs_t *fs_req) {
-  client_t *client = (client_t *)fs_req->data;
-  request_t *req = &client->request;
-  response_t *res = &client->response;
-
-  if (fs_req->result < 0) {
-    fprintf(stdout, "check fs_stat failed\n");
-    send_html_response(client, HTTP_STATUS_NOT_FOUND, getResponse404Content());
-    uv_fs_req_cleanup(fs_req);
-    free(fs_req);
-    return;
-  }
-
-  const uv_stat_t *stat = &fs_req->statbuf;
-  if (S_ISDIR(stat->st_mode)) {
-    req->default_filename_tries = 0;
-
-    char path[MAX_PATH_LENGTH];
-    const int len = strlen(fs_req->path);
-    if (len > 1 && fs_req->path[len - 1] != '/') {
-      res->length_path =
-          snprintf(path, MAX_PATH_LENGTH, "%s/%s", fs_req->path,
-                   web_config->defaults[req->default_filename_tries]);
-    } else {
-      res->length_path =
-          snprintf(path, MAX_PATH_LENGTH, "%s%s", fs_req->path,
-                   web_config->defaults[req->default_filename_tries]);
-    }
-    fprintf(stdout, "try to find default file%s\n", path);
-
-    uv_fs_t *new_req = malloc(sizeof(uv_fs_t));
-    new_req->data = client;
-    uv_fs_stat(loop, new_req, path, check_default_files_async);
-
-    uv_fs_req_cleanup(fs_req);
-    free(fs_req);
-    return;
-  } else {
-    // found a file
-    res->size_content = fs_req->statbuf.st_size;
-    res->path_content = strdup(fs_req->path);
-    res->mime_content = match_mime_type(fs_req->path);
-    found_and_sendfs_req(client);
-  }
-
-  uv_fs_req_cleanup(fs_req);
-  free(fs_req);
-}
-
-static void process_request(llhttp_t *parser, client_t *client) {
-  request_t *req = &client->request;
-  response_t *res = &client->response;
-  fprintf(stdout, "Parse pass, type:%d, method:%d, url: %s\n", parser->type,
-          parser->method, req->url);
-
-  char path[MAX_PATH_LENGTH];
-
-  res->length_path =
-      snprintf(path, MAX_PATH_LENGTH, "%s%s", web_config->www_root, req->url);
-  if (res->length_path >= MAX_PATH_LENGTH) {
-    send_html_response(client, HTTP_STATUS_INTERNAL_SERVER_ERROR,
-                       getResponse500Content());
-    return;
-  }
-
-  uv_fs_t *fs_req = malloc(sizeof(uv_fs_t));
-  fs_req->data = client;
-  uv_fs_stat(loop, fs_req, path, check_path_async);
-}
-
-
-
 static void on_alloc(uv_handle_t *handle, size_t suggested_size,
                      uv_buf_t *buf) {
   UNUSED(handle);
@@ -516,19 +36,8 @@ static void on_close(uv_handle_t *handle) {
   release_client(client);
 }
 
-static void on_write(uv_write_t *req, int status) {
-  if (status == 0) {
-    uv_buf_t *ptr = (uv_buf_t *)req->data;
-    for (unsigned int i = 0; i < req->nbufs; ++i) {
-      free(ptr[i].base);
-    }
-    free(ptr);
-  }
-  free(req);
-}
-
 // Callback to handle HTTP request data
-void on_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
+void on_request_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
   const uv_tcp_t *handle = (uv_tcp_t *)stream;
   client_t *client = (client_t *)(handle->data);
 
@@ -560,11 +69,9 @@ void on_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 
   client->request.method = parser->method;
   // parsed successfully
-  process_request(parser, client);
+  router_dispatch(client);
   free(buf->base);
 }
-
-
 
 /**
  * @brief Callback function for new client connections.
@@ -585,7 +92,7 @@ static void on_connection(uv_stream_t *server, int status) {
 
   client_t *client = client_create(loop);
   if (uv_accept(server, (uv_stream_t *)client) == 0) {
-    uv_read_start((uv_stream_t *)&(client->handle), on_alloc, on_read);
+    uv_read_start((uv_stream_t *)&(client->handle), on_alloc, on_request_read);
   } else {
     uv_close((uv_handle_t *)&(client->handle), (uv_close_cb)on_close);
     fprintf(stderr, "New connection error %s\n", uv_strerror(status));
@@ -620,6 +127,7 @@ int webserver(uv_loop_t *ev_loop, webconfig_t *config) {
     return -1;
 
   loop = ev_loop;
+  webconfig_t *web_config = NULL;
 
   // Set configuration if provided
   if (config != NULL) {
@@ -630,6 +138,7 @@ int webserver(uv_loop_t *ev_loop, webconfig_t *config) {
   }
 
   file_handle_init(loop, web_config);
+  router_init();
 
   // Initialize signal handlers
   uv_signal_init(loop, &sigint_handle);
@@ -638,8 +147,6 @@ int webserver(uv_loop_t *ev_loop, webconfig_t *config) {
   // Register signal handlers
   uv_signal_start(&sigint_handle, signal_handler, SIGINT);
   uv_signal_start(&sigterm_handle, signal_handler, SIGTERM);
-
-
 
   // Initialize TCP server
   uv_tcp_t server;

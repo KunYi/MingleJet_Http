@@ -1,4 +1,5 @@
 #include "file_handle.h"
+#include "response.h"
 #include "router.h"
 #include <string.h>
 #include <stdlib.h>
@@ -41,7 +42,7 @@ void router_dispatch(client_t *client) {
         route->handler(client);
     } else {
         // Default to file handler for unmatched routes
-        // handle_file_request(client);
+        handle_file_request(client);
     }
 }
 
